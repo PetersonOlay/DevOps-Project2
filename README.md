@@ -404,14 +404,22 @@ Error: connect ECONNREFUSED <rds-endpoint>:5432
 
 ## Project Highlights
 
+**Infrastructure & Security:**
 - **No DynamoDB** — S3 native state locking (`use_lockfile = true`) requires only Terraform >= 1.10 and bucket versioning
-- **IRSA everywhere** — no static IAM credentials in pods; each workload gets scoped temporary credentials via OIDC federation
 - **Direct browser uploads** — S3 pre-signed URLs bypass the API for large files, reducing API load and cost
 - **No double-processing** — workers claim jobs with `SELECT FOR UPDATE SKIP LOCKED`; multiple replicas are safe
 - **KMS encryption end-to-end** — single key covers RDS storage, S3 objects, and ECR image layers, with annual rotation
 - **Environment isolation** — dev, stg, and prod use separate state files, namespaces, and RDS instances from one codebase
 - **SSM Session Manager** — shell access to nodes without SSH keys or a bastion host
 - **AL2023 nodes** — recommended AMI for EKS 1.35+
+
+**CI/CD & Deployment:**
+- **Parallel matrix builds** — all 4 Docker images build simultaneously; total pipeline time equals the slowest single build, not the sum
+- **Docker layer caching** — `--cache-from latest` reuses unchanged layers; only modified code layers are rebuilt
+- **Immutable image tags** — every image is tagged `sha-<git-sha>` (tied to exact commit) and `latest` (rolling); enables precise rollbacks
+- **Path-scoped triggers** — CI only fires when `app/**` or `helm/**` changes; Terraform-only commits skip the pipeline
+- **Automatic dev / manual promotion** — push to `main` always deploys to dev; stg and prod require an explicit `workflow_dispatch` approval
+- **Rollout health gate** — pipeline waits for `kubectl rollout status` (300 s timeout) before marking success; unhealthy deploys fail the build
 
 ---
 
