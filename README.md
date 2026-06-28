@@ -163,13 +163,22 @@ export TF_VAR_db_password='<your-secure-password>'
 
 ### Step 4 — Initialise and deploy
 
+Initialise Terraform with the environment-specific backend configuration:
+
 ```bash
 cd ..
 ENV=dev   # dev | stg | prod
 terraform init -backend-config=environments/${ENV}.backend.hcl
 ```
 
-On first apply, use targeting to control provider authentication order:
+Validate the configuration and preview changes:
+
+```bash
+terraform validate
+terraform plan -var-file=environments/${ENV}.tfvars
+```
+
+On first apply, use targeting to control provider authentication order (the Kubernetes and Helm providers cannot connect until the cluster exists):
 
 ```bash
 terraform apply -var-file=environments/${ENV}.tfvars -target=module.vpc
@@ -177,7 +186,9 @@ terraform apply -var-file=environments/${ENV}.tfvars -target=module.eks
 terraform apply -var-file=environments/${ENV}.tfvars
 ```
 
-> For all subsequent applies only the third command is needed.
+> For all subsequent applies (after the cluster already exists) only the third command is needed.
+> 
+> If `terraform plan` asks for `db_password`, ensure you've set the environment variable: `export TF_VAR_db_password='your-password'`
 
 ### Step 5 — Configure kubectl
 
@@ -197,13 +208,22 @@ kubectl get deploy -n kube-system aws-load-balancer-controller
 
 ### Step 7 — Set up GitHub Actions
 
-Add these in **GitHub → Settings → Secrets and variables → Actions**:
+GitHub Actions needs AWS credentials and the ECR registry URL. Add these secrets and variables:
 
-| Type | Name | Value |
-|---|---|---|
-| Secret | `AWS_ACCESS_KEY_ID` | Your IAM access key |
-| Secret | `AWS_SECRET_ACCESS_KEY` | Your IAM secret key |
-| Variable | `ECR_PREFIX` | `395675597879.dkr.ecr.us-east-1.amazonaws.com` |
+**Secrets** (Settings → Secrets and variables → Actions → Secrets tab):
+
+1. Click **New repository secret**
+2. Name: `AWS_ACCESS_KEY_ID` — Value: `<your IAM access key>`
+3. Name: `AWS_SECRET_ACCESS_KEY` — Value: `<your IAM secret key>`
+
+> These credentials should belong to an IAM user with permissions to push to ECR, log in to the cluster, and run `kubectl set image` on deployments.
+
+**Variables** (Settings → Secrets and variables → Actions → Variables tab):
+
+1. Click **New repository variable**
+2. Name: `ECR_PREFIX` — Value: `395675597879.dkr.ecr.us-east-1.amazonaws.com`
+
+> If you need different registries per environment (e.g. separate AWS accounts), add environment-specific variables under **Settings → Environments** instead.
 
 ### Step 8 — Deploy the DAM application
 
@@ -292,6 +312,19 @@ Error: Failed to get existing workspaces: S3 bucket does not exist.
 ```
 
 **Fix:** Complete the bootstrap step first, then re-run `terraform init`.
+
+---
+
+### Terraform plan fails: "Unsupported argument: most_recent"
+
+```
+Error: Unsupported argument
+  on eks-config.tf line 9, in resource "aws_eks_addon" "coredns":
+    most_recent = true
+An argument named "most_recent" is not expected here.
+```
+
+**Fix:** The `aws_eks_addon` resource does not support `most_recent`. Each addon will automatically use the default/recommended version for the cluster's Kubernetes version. This is already fixed in the current code — ensure you're running the latest version from the repository.
 
 ---
 
