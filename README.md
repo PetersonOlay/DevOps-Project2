@@ -17,11 +17,23 @@ A full-stack Digital Asset Management platform deployed on Amazon EKS, provision
 - **CloudWatch Log Groups** — all 5 control plane log types + Container Insights, per-environment retention
 
 ### DAM Application
+
+**Frontend:**
+- `dam/web` — React 18 + Vite + Tailwind CSS single-page app, served by nginx
+
+**Backend:**
+- `dam/api` — Node.js + Express REST API with Prisma ORM, connects to PostgreSQL and S3
+
+**Workers:**
+- `dam/transform-worker` — generates thumbnails using Sharp (requires libvips)
+- `dam/export-worker` — zips collections and uploads to S3
+
+**Data & Deployment:**
 - **PostgreSQL 15** on RDS — private, KMS-encrypted, Multi-AZ in prod, accessible only from EKS node security group
 - **S3 Asset Bucket** — KMS-encrypted, versioned, TLS-enforced; layout: `originals/`, `thumbnails/`, `exports/`, `temp/`
-- **4 ECR Repositories** — `dam/api`, `dam/web`, `dam/transform-worker`, `dam/export-worker`; KMS-encrypted, lifecycle-managed
+- **4 ECR Repositories** — one image per service above; KMS-encrypted, lifecycle-managed
 - **Helm Chart** — single chart at `helm/dam/` with per-environment values overrides
-- **GitHub Actions CI/CD** — builds and pushes images on every push to `main`, deploys to `dam-dev` namespace automatically
+- **GitHub Actions CI/CD** — builds and pushes all 4 images on every push to `main`, deploys to `dam-dev` namespace automatically
 - **KMS Encryption** — single key shared by RDS, S3, and ECR with annual key rotation
 
 ---
@@ -142,14 +154,14 @@ Creates the S3 state bucket and least-privilege IAM backend policy. Uses a local
 ```bash
 cd bootstrap
 terraform init
-terraform apply -var state_bucket_name=previse-eks-tfstate-395675597879-dam
+terraform apply -var state_bucket_name=<YOUR_STATE_BUCKET_NAME>
 ```
 
 After apply, attach the output policy to your IAM user:
 
 ```bash
 aws iam attach-user-policy \
-  --user-name previsetech \
+  --user-name <YOUR_IAM_USER> \
   --policy-arn $(terraform output -raw terraform_s3_backend_policy_arn)
 ```
 
@@ -221,7 +233,7 @@ GitHub Actions needs AWS credentials and the ECR registry URL. Add these secrets
 **Variables** (Settings → Secrets and variables → Actions → Variables tab):
 
 1. Click **New repository variable**
-2. Name: `ECR_PREFIX` — Value: `395675597879.dkr.ecr.us-east-1.amazonaws.com`
+2. Name: `ECR_PREFIX` — Value: `<YOUR_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com`
 
 > If you need different registries per environment (e.g. separate AWS accounts), add environment-specific variables under **Settings → Environments** instead.
 
