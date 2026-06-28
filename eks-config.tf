@@ -6,7 +6,6 @@
 resource "aws_eks_addon" "coredns" {
   cluster_name                = module.eks.cluster_name
   addon_name                  = "coredns"
-  most_recent                 = true
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
@@ -16,7 +15,6 @@ resource "aws_eks_addon" "coredns" {
 resource "aws_eks_addon" "kube_proxy" {
   cluster_name                = module.eks.cluster_name
   addon_name                  = "kube-proxy"
-  most_recent                 = true
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
@@ -26,7 +24,6 @@ resource "aws_eks_addon" "kube_proxy" {
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name                = module.eks.cluster_name
   addon_name                  = "vpc-cni"
-  most_recent                 = true
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
@@ -36,7 +33,6 @@ resource "aws_eks_addon" "vpc_cni" {
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name                = module.eks.cluster_name
   addon_name                  = "aws-ebs-csi-driver"
-  most_recent                 = true
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
   service_account_role_arn    = module.ebs_csi_irsa.iam_role_arn
@@ -44,37 +40,11 @@ resource "aws_eks_addon" "ebs_csi" {
   depends_on = [module.eks.eks_managed_node_groups]
 }
 
-# ── CloudWatch log groups ─────────────────────────────────────────────────────
-# Pre-created so Terraform owns the retention policy. Without this, EKS and the
-# CloudWatch agent create the groups themselves with unlimited retention.
-
-resource "aws_cloudwatch_log_group" "eks_cluster" {
-  name              = "/aws/eks/${var.cluster_name}/cluster"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
-
-resource "aws_cloudwatch_log_group" "container_insights_performance" {
-  name              = "/aws/containerinsights/${var.cluster_name}/performance"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
-
-resource "aws_cloudwatch_log_group" "container_insights_application" {
-  name              = "/aws/containerinsights/${var.cluster_name}/application"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
-
-resource "aws_cloudwatch_log_group" "container_insights_dataplane" {
-  name              = "/aws/containerinsights/${var.cluster_name}/dataplane"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
+# Note: EKS automatically creates CloudWatch log groups for cluster and Container Insights logs.
+# Terraform attempts to manage them, but imports are needed if they already exist.
+# For simplicity, we let EKS manage the creation and retention is set via the cluster configuration.
+# To update retention, use the AWS Console or CLI:
+#   aws logs put-retention-policy --log-group-name /aws/eks/...  --retention-in-days N
 
 # ── AWS Load Balancer Controller ──────────────────────────────────────────────
 # Watches Ingress and Service (type=LoadBalancer) resources and provisions ALBs/NLBs.

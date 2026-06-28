@@ -182,7 +182,7 @@ resource "aws_db_instance" "dam" {
   identifier = "dam-${var.environment}"
 
   engine         = "postgres"
-  engine_version = "15.7"
+  engine_version = "15.18"
   instance_class = var.db_instance_class
 
   db_name  = var.db_name
