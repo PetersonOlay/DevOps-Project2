@@ -340,6 +340,42 @@ An argument named "most_recent" is not expected here.
 
 ---
 
+### Terraform plan/apply fails: "Cannot find version 15.7 for postgres"
+
+```
+Error: creating RDS DB Instance (dam-dev): operation error RDS: CreateDBInstance,
+api error InvalidParameterCombination: Cannot find version 15.7 for postgres
+```
+
+**Cause:** PostgreSQL 15.7 is not available in the target region (us-east-1). AWS RDS minor versions vary by region and are retired over time.
+
+**Fix:** Find the latest available PostgreSQL 15.x version:
+```bash
+aws rds describe-db-engine-versions --engine postgres --engine-version 15 \
+  --region us-east-1 --query 'DBEngineVersions[*].EngineVersion' --output text
+```
+
+Use the latest version found (e.g., 15.18). This is already fixed in the current code — ensure you're running the latest version from the repository.
+
+---
+
+### Terraform plan/apply fails: "The specified log group already exists"
+
+```
+Error: creating CloudWatch Logs Log Group (/aws/eks/eks-dev-cluster/cluster):
+ResourceAlreadyExistsException: The specified log group already exists
+```
+
+**Cause:** EKS automatically creates CloudWatch log groups for cluster and Container Insights logs before Terraform tries to create them.
+
+**Fix:** This is already fixed in the current code — Terraform no longer attempts to manage these log groups. EKS owns their creation, and you can manage retention via AWS CLI if needed:
+```bash
+aws logs put-retention-policy --log-group-name /aws/eks/eks-dev-cluster/cluster \
+  --retention-in-days 7
+```
+
+---
+
 ### Pods stuck in ImagePullBackOff
 
 ```
