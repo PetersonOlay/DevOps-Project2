@@ -2,10 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dam-export-worker
-  namespace: {{ include "dam.namespace" . }}
+  namespace: {{ .Values.global.namespace }}
   labels:
-    {{- include "dam.labels" . | nindent 4 }}
-    app.kubernetes.io/component: export-worker
+    app: dam-export-worker
 spec:
   replicas: {{ .Values.exportWorker.replicas }}
   selector:
@@ -15,24 +14,28 @@ spec:
     metadata:
       labels:
         app: dam-export-worker
-        {{- include "dam.labels" . | nindent 8 }}
     spec:
       serviceAccountName: dam-export-worker
       containers:
         - name: dam-export-worker
-          image: {{ include "dam.image" (dict "root" . "name" "dam/export-worker") }}
+          image: "{{ .Values.image.registry }}/dam/export-worker:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           envFrom:
             - secretRef:
                 name: dam-secrets
           env:
             - name: NODE_ENV
-              value: "production"
+              value: production
             - name: AWS_REGION
-              value: {{ .Values.global.region | quote }}
+              value: {{ .Values.global.region }}
             - name: S3_BUCKET
-              value: {{ .Values.api.s3Bucket | quote }}
+              value: {{ .Values.api.s3Bucket }}
             - name: POLL_INTERVAL_MS
               value: {{ .Values.exportWorker.pollIntervalMs | quote }}
           resources:
-            {{- toYaml .Values.exportWorker.resources | nindent 12 }}
+            requests:
+              cpu: {{ .Values.exportWorker.resources.requests.cpu }}
+              memory: {{ .Values.exportWorker.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.exportWorker.resources.limits.cpu }}
+              memory: {{ .Values.exportWorker.resources.limits.memory }}

@@ -128,3 +128,15 @@ variable "db_multi_az" {
   type        = bool
   default     = false
 }
+
+# ── Locals ────────────────────────────────────────────────────────────────────
+
+locals {
+  common_tags = {
+    Project     = "eks-cluster"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+
+  name_prefix = "eks-${var.environment}"
+}

@@ -1,5 +1,8 @@
 # Dev environment overrides.
-# Usage: helm install dam ./app/helm/dam -f app/helm/dam/values-dev.yaml --set ...
+# Usage: helm install dam ./helm/dam -f app/helm/dam/values-dev.yaml --set ...
+
+global:
+  namespace: dam-dev
 
 api:
   replicas: 1

@@ -135,6 +135,12 @@ resource "aws_iam_policy" "dam_api_s3" {
         Effect   = "Allow"
         Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
         Resource = aws_kms_key.dam.arn
+      },
+      {
+        Sid    = "SecretsManager"
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Resource = "arn:aws:secretsmanager:us-east-1:${var.account_id}:secret:dam-${var.environment}-*"
       }
     ]
   })
@@ -203,6 +209,12 @@ resource "aws_iam_policy" "dam_worker_s3" {
         Effect   = "Allow"
         Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
         Resource = aws_kms_key.dam.arn
+      },
+      {
+        Sid    = "SecretsManager"
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Resource = "arn:aws:secretsmanager:us-east-1:${var.account_id}:secret:dam-${var.environment}-*"
       }
     ]
   })
@@ -211,4 +223,53 @@ resource "aws_iam_policy" "dam_worker_s3" {
 resource "aws_iam_role_policy_attachment" "dam_worker_s3" {
   role       = aws_iam_role.dam_worker.name
   policy_arn = aws_iam_policy.dam_worker_s3.arn
+}
+
+# ── RDS S3 role (s3Export feature) ───────────────────────────────────────────
+# Allows PostgreSQL's aws_s3 extension to export query results directly to the
+# DAM assets bucket via aws_s3.query_export_to_s3().
+
+data "aws_iam_policy_document" "rds_s3_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["rds.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "rds_s3" {
+  name               = "dam-rds-s3-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.rds_s3_assume.json
+}
+
+resource "aws_iam_policy" "rds_s3" {
+  name = "dam-rds-s3-${var.environment}"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3Access"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:GetBucketLocation"]
+        Resource = [
+          aws_s3_bucket.dam_assets.arn,
+          "${aws_s3_bucket.dam_assets.arn}/*"
+        ]
+      },
+      {
+        Sid      = "KMS"
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource = aws_kms_key.dam.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_s3" {
+  role       = aws_iam_role.rds_s3.name
+  policy_arn = aws_iam_policy.rds_s3.arn
 }

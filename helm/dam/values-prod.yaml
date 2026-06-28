@@ -1,5 +1,8 @@
 # Production environment overrides.
-# Usage: helm upgrade dam ./app/helm/dam -f app/helm/dam/values-prod.yaml --reuse-values
+# Usage: helm upgrade dam ./helm/dam -f app/helm/dam/values-prod.yaml --reuse-values
+
+global:
+  namespace: dam-prod
 
 api:
   replicas: 2

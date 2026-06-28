@@ -11,3 +11,9 @@ variable "state_bucket_name" {
   description = "Globally unique S3 bucket name for Terraform state (e.g. eks-tfstate-123456789012)"
   type        = string
 }
+
+variable "account_id" {
+  description = "AWS account ID — used to construct the IAM policy ARN in the import block"
+  type        = string
+  default     = "395675597879"
+}

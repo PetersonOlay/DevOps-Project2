@@ -1,6 +1,6 @@
 # Default values for the DAM Helm chart.
 # Override per environment with values-dev.yaml or values-prod.yaml:
-#   helm install dam ./app/helm/dam -f app/helm/dam/values-prod.yaml
+#   helm install dam ./helm/dam -f app/helm/dam/values-prod.yaml
 
 global:
   accountId: "395675597879"

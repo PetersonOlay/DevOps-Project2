@@ -1,73 +1,128 @@
-# 🚀 Production EKS Cluster on AWS using Terraform
+# DAM Platform on AWS EKS
 
-A fully-automated, multi-environment Kubernetes platform on AWS EKS, provisioned with Terraform modules, IRSA-scoped IAM, and an S3 state backend with native locking.
+A full-stack Digital Asset Management platform deployed on Amazon EKS, provisioned with Terraform, containerised with Docker, deployed via Helm, and continuously delivered through GitHub Actions.
 
 ---
 
-## Project Overview
+## Platform Overview
 
-The deployment includes:
+### Infrastructure
+- **Amazon EKS 1.35** — managed Kubernetes control plane with `API_AND_CONFIG_MAP` authentication
+- **Multi-AZ VPC** — 3 public + 3 private subnets across `us-east-1a/b/c`
+- **Managed Node Group** — Amazon Linux 2023, auto-scaling 1–5 nodes per environment
+- **AWS Load Balancer Controller** — Helm-deployed with IRSA, 2 replicas, provisions ALBs from Ingress resources
+- **EKS Managed Add-ons** — CoreDNS, kube-proxy, VPC CNI, EBS CSI driver
+- **IRSA (IAM Roles for Service Accounts)** — scoped roles for EBS CSI, LBC, DAM API, DAM workers, and CloudWatch agent
+- **S3 State Backend** — native lock file (`use_lockfile = true`), no DynamoDB required
+- **CloudWatch Log Groups** — all 5 control plane log types + Container Insights, per-environment retention
 
-- **Amazon EKS 1.35** — managed Kubernetes control plane with `API_AND_CONFIG_MAP` dual authentication
-- **Multi-AZ VPC** — 3 public and 3 private subnets across `us-east-1a`, `us-east-1b`, `us-east-1c`
-- **Managed Node Group** — Amazon Linux 2023, auto-scaling from 1 to 5 nodes depending on environment
-- **AWS Load Balancer Controller** — Helm-deployed with IRSA, 2 replicas for high availability
-- **EKS Managed Add-ons** — CoreDNS, kube-proxy, VPC CNI, and EBS CSI driver
-- **IRSA (IAM Roles for Service Accounts)** — scoped roles for EBS CSI, LBC, app S3 access, and CloudWatch agent
-- **S3 State Backend** — native lock file (`use_lockfile = true`), no DynamoDB required, per-environment isolation
-- **Application S3 Bucket** — KMS-encrypted, versioned, TLS-enforced, with 90-day lifecycle on old versions
-- **CloudWatch Log Groups** — control plane logs (all 5 types) and Container Insights, with per-environment retention
-- **Multi-environment** — dev, stg, and prod deployed from a single codebase using `.tfvars` and `.backend.hcl` files
+### DAM Application
+- **PostgreSQL 15** on RDS — private, KMS-encrypted, Multi-AZ in prod, accessible only from EKS node security group
+- **S3 Asset Bucket** — KMS-encrypted, versioned, TLS-enforced; layout: `originals/`, `thumbnails/`, `exports/`, `temp/`
+- **4 ECR Repositories** — `dam/api`, `dam/web`, `dam/transform-worker`, `dam/export-worker`; KMS-encrypted, lifecycle-managed
+- **Helm Chart** — single chart at `helm/dam/` with per-environment values overrides
+- **GitHub Actions CI/CD** — builds and pushes images on every push to `main`, deploys to `dam-dev` namespace automatically
+- **KMS Encryption** — single key shared by RDS, S3, and ECR with annual key rotation
+
+---
+
+## Web Application
+
+The DAM frontend is a single-page application in `app/web/` built with:
+
+| Component | Purpose |
+|---|---|
+| **React 18** | Component-based UI with hooks |
+| **Vite** | Fast development server and production bundler |
+| **Tailwind CSS** | Utility-first styling |
+| **TanStack Query** | Server-state management — caching, background refetch, optimistic updates |
+| **React Router 6** | Client-side routing |
+| **Axios** (`src/api/client.ts`) | Typed API layer with automatic JWT refresh interceptor |
+
+**Key pages:** Login, Register, Dashboard (asset grid), CollectionView, ShareView
+
+**Key components:**
+- `UploadZone` — drag-and-drop upload using S3 pre-signed URLs (files go directly from the browser to S3, bypassing the API)
+- `AssetCard` — thumbnail preview with tag badges and action menu
+- `TagFilter` — multi-select tag sidebar for filtering the asset grid
+- `Navbar` — authenticated navigation with user context
+
+The web app builds to a static bundle served by nginx (`app/web/nginx.conf`) inside the `dam/web` container.
+
+---
+
+## API (app/api)
+
+Node.js + Express + TypeScript backend with:
+- **Prisma ORM** — PostgreSQL schema management and type-safe queries
+- **JWT auth** — 15-minute access tokens + 7-day HTTP-only refresh cookies
+- **S3 pre-signed URLs** — issued per-request for uploads and downloads
+- **Routes** — `/auth`, `/assets`, `/tags`, `/collections`, `/shares`, `/analytics`, `/jobs`
+
+## Workers
+
+| Worker | Image | Role |
+|---|---|---|
+| `transform-worker` | `dam/transform-worker` | Generates thumbnails using Sharp (requires `libvips`) |
+| `export-worker` | `dam/export-worker` | Zips collections and uploads to S3 |
+
+Both workers claim jobs with `SELECT FOR UPDATE SKIP LOCKED` so multiple replicas never process the same job.
 
 ---
 
 ## Project Structure
 
-```bash
+```
 DevOps-Project2/
-├── bootstrap/                  # Run once to create the S3 state bucket and IAM policy
-│   ├── main.tf                 # S3 bucket, encryption, versioning, IAM policy
-│   ├── variables.tf            # region, state_bucket_name
-│   └── outputs.tf              # state_bucket_name, terraform_s3_backend_policy_arn
-├── environments/               # Per-environment variable overrides
-│   ├── dev.backend.hcl         # Dev backend: eks/dev/terraform.tfstate
-│   ├── dev.tfvars              # Dev: t3.medium x1, single NAT GW, 7-day logs
-│   ├── stg.backend.hcl         # Stg backend: eks/stg/terraform.tfstate
-│   ├── stg.tfvars              # Stg: m5.large x2, single NAT GW, 30-day logs
-│   ├── prod.backend.hcl        # Prod backend: eks/prod/terraform.tfstate
-│   └── prod.tfvars             # Prod: m5.large x3, 3 NAT GWs, 90-day logs
+├── bootstrap/                      # Run once — creates S3 state bucket and IAM policy
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf                  # Prints next steps after apply
+├── environments/                   # Per-environment overrides
+│   ├── dev.backend.hcl / dev.tfvars
+│   ├── stg.backend.hcl / stg.tfvars
+│   └── prod.backend.hcl / prod.tfvars
 ├── modules/
-│   ├── eks/                    # EKS cluster and managed node group module
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   └── vpc/                    # Multi-AZ VPC with public and private subnets
-│       ├── main.tf
-│       ├── variables.tf
-│       └── outputs.tf
-├── addons.tf                   # CoreDNS, kube-proxy, VPC CNI, EBS CSI managed add-ons
-├── backend.tf                  # Empty S3 backend block — values injected at init time
-├── cloudwatch.tf               # Control plane and Container Insights log groups
-├── helm.tf                     # AWS Load Balancer Controller Helm release
-├── iam.tf                      # IRSA roles for LBC, EBS CSI, app S3, CloudWatch agent
-├── locals.tf                   # Common tags and name_prefix
-├── main.tf                     # AWS, Kubernetes, Helm providers + module.vpc + module.eks
-├── outputs.tf                  # Cluster endpoint, OIDC ARN, S3 bucket, kubectl command
-├── s3.tf                       # Application S3 bucket with encryption and lifecycle rules
-├── variables.tf                # All input variables with defaults and validation
-└── versions.tf                 # Provider version constraints (Terraform >= 1.10)
+│   ├── eks/                        # EKS cluster + managed node group
+│   └── vpc/                        # Multi-AZ VPC
+├── app/
+│   ├── api/                        # Node.js API (Express + Prisma)
+│   ├── web/                        # React 18 + Vite frontend
+│   ├── transform-worker/           # Thumbnail generation (Sharp + libvips)
+│   ├── export-worker/              # ZIP export worker
+│   └── docker-compose.yml          # Local development stack
+├── helm/dam/                       # Helm chart for all DAM services
+│   ├── Chart.yaml
+│   ├── values.yaml                 # Defaults
+│   ├── values-dev.yaml
+│   ├── values-stg.yaml
+│   ├── values-prod.yaml
+│   └── templates/                  # Deployments, Services, Ingress, ServiceAccounts, Secret
+├── .github/workflows/
+│   └── dam-deploy.yml              # Build + push + deploy pipeline
+├── versions.tf                     # Terraform providers + S3 backend block
+├── variables.tf                    # All input variables + locals
+├── main.tf                         # module.vpc + module.eks + provider config
+├── iam.tf                          # All IRSA roles (EBS CSI, LBC, DAM API, workers, CloudWatch)
+├── dam.tf                          # KMS key, ECR repos, S3 asset bucket, RDS instance
+├── eks-config.tf                   # EKS managed add-ons, CloudWatch log groups, LBC Helm release
+└── outputs.tf                      # Cluster endpoint, ECR URLs, RDS endpoint, IRSA role ARNs
 ```
 
 ---
 
 ## Prerequisites
 
-- **Terraform** >= 1.10.0 — required for the S3 native lock file backend
-- **AWS CLI** >= 2.0 — configured with credentials for the target AWS account
-- **kubectl** — any recent stable version
-- **Helm** >= 3.0
-- **Git**
-- AWS IAM permissions to create EKS clusters, VPCs, IAM roles, S3 buckets, and CloudWatch log groups
+| Tool | Version | Notes |
+|---|---|---|
+| Terraform | >= 1.10.0 | Required for S3 native state locking |
+| AWS CLI | >= 2.0 | Configured for the target account |
+| kubectl | any recent | |
+| Helm | >= 3.0 | |
+| Docker | >= 24 | For local development and image builds |
+| Git | any | |
+
+AWS IAM permissions required: EKS, VPC, IAM, S3, RDS, ECR, KMS, CloudWatch, Secrets Manager.
 
 ---
 
@@ -82,44 +137,39 @@ cd DevOps-Project2
 
 ### Step 2 — Bootstrap (first-time only)
 
-Run this once to create the S3 state bucket and least-privilege IAM policy. This step uses a local backend and never needs to be repeated.
+Creates the S3 state bucket and least-privilege IAM backend policy. Uses a local backend — run this once and never destroy it.
 
 ```bash
 cd bootstrap
 terraform init
-terraform apply -var state_bucket_name=eks-tfstate-395675597879
+terraform apply -var state_bucket_name=previse-eks-tfstate-395675597879-dam
 ```
 
-After apply, note the `terraform_s3_backend_policy_arn` output and attach it to the IAM user or role running Terraform:
+After apply, attach the output policy to your IAM user:
 
 ```bash
 aws iam attach-user-policy \
-  --user-name <YOUR_IAM_USER> \
-  --policy-arn <terraform_s3_backend_policy_arn output>
-
-# Or for a role:
-# aws iam attach-role-policy --role-name <YOUR_ROLE> --policy-arn <ARN>
+  --user-name previsetech \
+  --policy-arn $(terraform output -raw terraform_s3_backend_policy_arn)
 ```
 
-### Step 3 — Choose an environment
+### Step 3 — Set the RDS password
 
-| Environment | Cluster | Instance | Nodes | NAT Gateways | Log Retention |
-|---|---|---|---|---|---|
-| dev | eks-dev-cluster | t3.medium | 1–3 | 1 shared | 7 days |
-| stg | eks-stg-cluster | m5.large | 2–4 | 1 shared | 30 days |
-| prod | eks-prod-cluster | m5.large | 2–5 | 3 (one per AZ) | 90 days |
+Never store this in a `.tfvars` file. Use single quotes to avoid bash history-expansion issues with special characters:
 
-### Step 4 — Initialize the root module
+```bash
+export TF_VAR_db_password='<your-secure-password>'
+```
+
+### Step 4 — Initialise and deploy
 
 ```bash
 cd ..
-ENV=prod   # set to dev, stg, or prod
+ENV=dev   # dev | stg | prod
 terraform init -backend-config=environments/${ENV}.backend.hcl
 ```
 
-### Step 5 — Apply (first-time three-pass)
-
-The Kubernetes and Helm providers need the cluster to exist before they can authenticate. On the first apply, use targeting to control the order:
+On first apply, use targeting to control provider authentication order:
 
 ```bash
 terraform apply -var-file=environments/${ENV}.tfvars -target=module.vpc
@@ -127,54 +177,111 @@ terraform apply -var-file=environments/${ENV}.tfvars -target=module.eks
 terraform apply -var-file=environments/${ENV}.tfvars
 ```
 
-> **Note:** For all subsequent applies (after the cluster already exists), only the third command is needed.
+> For all subsequent applies only the third command is needed.
 
-### Step 6 — Configure kubectl
+### Step 5 — Configure kubectl
 
 ```bash
 aws eks update-kubeconfig --region us-east-1 --name eks-${ENV}-cluster
-```
-
-Or use the Terraform output directly:
-
-```bash
+# or:
 $(terraform output -raw configure_kubectl)
 ```
 
-### Step 7 — Verify the cluster
+### Step 6 — Verify the cluster
 
 ```bash
 kubectl get nodes -o wide
-# Expected: nodes in Running state, one per AZ
-
 kubectl get pods -n kube-system
-# Expected: coredns, kube-proxy, aws-node, ebs-csi-* all Running
-
 kubectl get deploy -n kube-system aws-load-balancer-controller
-# Expected: 2/2 ready
 ```
 
-### Step 8 — Tear down
+### Step 7 — Set up GitHub Actions
+
+Add these in **GitHub → Settings → Secrets and variables → Actions**:
+
+| Type | Name | Value |
+|---|---|---|
+| Secret | `AWS_ACCESS_KEY_ID` | Your IAM access key |
+| Secret | `AWS_SECRET_ACCESS_KEY` | Your IAM secret key |
+| Variable | `ECR_PREFIX` | `395675597879.dkr.ecr.us-east-1.amazonaws.com` |
+
+### Step 8 — Deploy the DAM application
+
+**Via CI/CD (automatic):** Push to `main` — the workflow builds all 4 images, pushes to ECR, and rolls out to `dam-dev`.
+
+**Via Helm (manual / first-time):**
+
+```bash
+helm upgrade --install dam ./helm/dam \
+  -f helm/dam/values-dev.yaml \
+  --namespace dam-dev --create-namespace
+```
+
+**Promote to staging or production** using `workflow_dispatch` in the GitHub Actions UI, selecting the target environment.
+
+### Step 9 — Verify DAM pods
+
+```bash
+kubectl get pods -n dam-dev
+kubectl get ingress -n dam-dev
+```
+
+### Step 10 — Tear down
 
 ```bash
 terraform destroy -var-file=environments/${ENV}.tfvars
 ```
 
-> **Important:** The bootstrap S3 bucket is intentionally excluded from destroy. Delete it manually via the AWS Console or CLI only if you no longer need the stored state.
+> The bootstrap S3 bucket has `prevent_destroy = true`. Delete it manually via the AWS Console only when you no longer need the stored state.
+
+---
+
+## CI/CD Pipeline
+
+The workflow at `.github/workflows/dam-deploy.yml` runs in two jobs:
+
+**build-and-push** (matrix across all 4 services):
+1. Authenticates to AWS using `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+2. Logs in to ECR
+3. Builds each Docker image with `--cache-from` for layer reuse
+4. Pushes `sha-<git-sha>` and `latest` tags
+
+**deploy** (after all builds pass):
+1. Authenticates to AWS
+2. Updates kubeconfig for `eks-<env>-cluster`
+3. Runs `kubectl set image` for all 4 deployments in `dam-<env>` namespace
+4. Waits for rollouts to complete (300s timeout per deployment)
+5. Prints pod and ingress status
+
+**Triggers:**
+- `push` to `main` with changes in `app/**` or `helm/**` → always targets `dev`
+- `workflow_dispatch` → choose `dev`, `stg`, or `prod` manually
+
+---
+
+## Environments
+
+| | dev | stg | prod |
+|---|---|---|---|
+| EKS nodes | t3.medium × 1–3 | m5.large × 2–4 | m5.large × 2–5 |
+| NAT Gateways | 1 shared | 1 shared | 3 (one per AZ) |
+| RDS instance | db.t3.micro | db.t3.medium | db.t3.medium |
+| RDS Multi-AZ | No | No | Yes |
+| RDS backup retention | 1 day | 1 day | 7 days |
+| Log retention | 7 days | 30 days | 90 days |
+| K8s namespace | `dam-dev` | `dam-stg` | `dam-prod` |
 
 ---
 
 ## Troubleshooting
 
-### Kubernetes or Helm provider cannot connect during first apply
+### Kubernetes/Helm provider fails on first apply
 
 ```
 Error: Get "https://<endpoint>/api": context deadline exceeded
 ```
 
-**Cause:** The Kubernetes and Helm providers attempt to authenticate against the EKS API server before the cluster has been created.
-
-**Fix:** Use the three-pass apply sequence from Step 5 — target `module.vpc` first, then `module.eks`, then run the full apply.
+**Fix:** Use the three-pass apply from Step 4 — target `module.vpc` first, then `module.eks`, then run the full apply.
 
 ---
 
@@ -184,80 +291,46 @@ Error: Get "https://<endpoint>/api": context deadline exceeded
 Error: Failed to get existing workspaces: S3 bucket does not exist.
 ```
 
-**Cause:** The S3 state bucket was not created before running `terraform init` in the root module.
-
 **Fix:** Complete the bootstrap step first, then re-run `terraform init`.
 
 ---
 
-### Nodes show NotReady after apply completes
+### Pods stuck in ImagePullBackOff
 
 ```
-kubectl get nodes
-NAME       STATUS     ROLES    AGE   VERSION
-node-...   NotReady   <none>   2m    v1.35.x
+Failed to pull image "...dkr.ecr...": no basic auth credentials
 ```
 
-**Cause:** The node group bootstrap process (pulling the AMI, running cloud-init, joining the cluster) takes 3–5 minutes after the node group resource is created.
-
-**Fix:** Wait a few minutes and recheck. If nodes remain NotReady after 10 minutes, check the node group events in the EKS console.
+**Fix:** The node IAM role requires `AmazonEC2ContainerRegistryReadOnly`. This is already added in `modules/eks/main.tf` under `iam_role_additional_policies`. If you see this on an existing cluster, you may need to re-apply after adding the policy.
 
 ---
 
-### AWS Load Balancer Controller pods stuck in Pending
+### API pods cannot connect to RDS
 
 ```
-kubectl describe pod -n kube-system <lbc-pod-name>
-Events: FailedScheduling: 0/1 nodes available
+Error: connect ECONNREFUSED <rds-endpoint>:5432
 ```
 
-**Cause:** Nodes may not be ready yet, or the IRSA annotation is missing from the service account.
+**Fix:** The RDS security group only allows port 5432 from the EKS node security group. Verify `aws_security_group.rds` in `dam.tf` references `module.eks.node_security_group_id`. Also confirm `DATABASE_URL` in the `dam-secrets` Kubernetes secret is set correctly.
 
-**Fix:** Confirm nodes are Running, then verify the IRSA annotation:
+---
 
-```bash
-kubectl describe sa aws-load-balancer-controller -n kube-system | grep role-arn
-```
+### Nodes show NotReady after apply
 
-The output should show `eks.amazonaws.com/role-arn: arn:aws:iam::...`.
+**Fix:** Node bootstrap takes 3–5 minutes after the node group is created. Wait and recheck. If still NotReady after 10 minutes, check node group events in the EKS console.
 
 ---
 
 ## Project Highlights
 
-- **Multi-AZ high availability** — nodes and NAT gateways spread across three Availability Zones
-- **IRSA everywhere** — no instance-level IAM permissions; each workload receives its own scoped credentials
-- **S3 native state locking** — no DynamoDB table needed; Terraform >= 1.10 writes a `.tflock` object
-- **Full environment isolation** — dev, stg, and prod use separate state files under separate S3 keys
-- **AL2023 nodes** — Amazon Linux 2023 is the recommended and supported AMI for EKS 1.35+
+- **No DynamoDB** — S3 native state locking (`use_lockfile = true`) requires only Terraform >= 1.10 and bucket versioning
+- **IRSA everywhere** — no static IAM credentials in pods; each workload gets scoped temporary credentials via OIDC federation
+- **Direct browser uploads** — S3 pre-signed URLs bypass the API for large files, reducing API load and cost
+- **No double-processing** — workers claim jobs with `SELECT FOR UPDATE SKIP LOCKED`; multiple replicas are safe
+- **KMS encryption end-to-end** — single key covers RDS storage, S3 objects, and ECR image layers, with annual rotation
+- **Environment isolation** — dev, stg, and prod use separate state files, namespaces, and RDS instances from one codebase
 - **SSM Session Manager** — shell access to nodes without SSH keys or a bastion host
-- **Cluster Autoscaler ready** — node group tagged with the labels required for autoscaler discovery
-
----
-
-## Configuration Details
-
-### VPC
-
-- **CIDR**: `10.0.0.0/16`
-- **Availability Zones**: `us-east-1a`, `us-east-1b`, `us-east-1c`
-- **Private subnets**: `10.0.0.0/19`, `10.0.32.0/19`, `10.0.64.0/19` — `/19` provides 8190 IPs per subnet for dense pod scheduling
-- **Public subnets**: `10.0.96.0/24`, `10.0.97.0/24`, `10.0.98.0/24` — `/24` is sufficient for NAT GW ENIs and load balancers
-- **NAT Gateways**: 1 shared (dev/stg) or 3 per-AZ (prod)
-
-### EKS Cluster
-
-- **Kubernetes version**: `1.35`
-- **Authentication mode**: `API_AND_CONFIG_MAP` — backward-compatible with existing aws-auth ConfigMap entries
-- **Control plane logs**: `api`, `audit`, `authenticator`, `controllerManager`, `scheduler`
-- **Endpoint access**: public and private
-
-### Node Group
-
-- **AMI type**: `AL2023_x86_64_STANDARD`
-- **Root disk**: `50 GiB`
-- **Update strategy**: max `33%` unavailable during rolling replacement
-- **Additional policy**: `AmazonSSMManagedInstanceCore` for SSM access
+- **AL2023 nodes** — recommended AMI for EKS 1.35+
 
 ---
 
@@ -269,24 +342,19 @@ The output should show `eks.amazonaws.com/role-arn: arn:aws:iam::...`.
 - [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/)
 - [Terraform S3 Backend](https://developer.hashicorp.com/terraform/language/backend/s3)
 - [IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
+- [Sharp image processing](https://sharp.pixelplumbing.com/)
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Open a pull request at [github.com/PetersonOlay/DevOps-Project2](https://github.com/PetersonOlay/DevOps-Project2) with a clear description of what you changed and why.
-
----
-
-## Hit the Star
-
-If this project saved you time, give it a [star](https://github.com/PetersonOlay/DevOps-Project2) — it helps others find it.
+Open a pull request at [github.com/PetersonOlay/DevOps-Project2](https://github.com/PetersonOlay/DevOps-Project2) with a clear description of what changed and why.
 
 ---
 
 ## Author
 
-Built by **[Peterson Olay](https://github.com/PetersonOlay)**.
+Built by **[Peterson Olay](https://github.com/PetersonOlay)**
 
 - GitHub: [github.com/PetersonOlay](https://github.com/PetersonOlay)
 - LinkedIn: [linkedin.com/in/peter-olay-745b05292](https://www.linkedin.com/in/peter-olay-745b05292/)

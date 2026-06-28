@@ -67,6 +67,8 @@ module "eks" {
       iam_role_additional_policies = {
         # SSM Session Manager: shell access to nodes without SSH or a bastion host.
         AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        # ECR: nodes must be able to pull images from private ECR repositories.
+        AmazonEC2ContainerRegistryReadOnly = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
       }
 
       tags = {

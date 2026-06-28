@@ -2,7 +2,7 @@
 # Replace 395675597879 with your 12-digit AWS account ID.
 # Inject at init time: terraform init -backend-config=environments/dev.backend.hcl
 
-bucket = "eks-tfstate-395675597879"
+bucket = "previse-eks-tfstate-395675597879-dam"
 
 # Isolated state key — dev state never touches stg or prod state
 key    = "eks/dev/terraform.tfstate"

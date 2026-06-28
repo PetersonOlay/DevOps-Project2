@@ -5,20 +5,28 @@ on:
     branches: [main]
     paths:
       - "app/**"
+      - "helm/**"
       - ".github/workflows/dam-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: dev
+        type: choice
+        options: [dev, stg, prod]
 
 env:
-  AWS_REGION: us-east-1
-  AWS_ACCOUNT_ID: "395675597879"
-  ECR_PREFIX: "395675597879.dkr.ecr.us-east-1.amazonaws.com"
-  K8S_NAMESPACE: dam
+  ECR_PREFIX: ${{ vars.ECR_PREFIX }}
+  # Push to main always targets dev.
+  # workflow_dispatch lets you promote to stg or prod manually.
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
 
 jobs:
   build-and-push:
     name: Build & push images to ECR
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # OIDC federation with AWS
       contents: read
 
     strategy:
@@ -41,10 +49,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-dam
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -65,47 +74,50 @@ jobs:
           docker push "$IMAGE:latest"
 
   deploy:
-    name: Deploy to EKS
+    name: Deploy to EKS (${{ github.event.inputs.environment || 'dev' }})
     needs: build-and-push
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-dam
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \
             --region ${{ env.AWS_REGION }} \
-            --name eks-prod-cluster
+            --name eks-${{ env.ENVIRONMENT }}-cluster
 
       - name: Update image tags in deployments
         run: |
           SHA="${{ github.sha }}"
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
           for svc in api web transform-worker export-worker; do
             IMAGE="${{ env.ECR_PREFIX }}/dam/${svc}:sha-${SHA}"
             kubectl set image deployment/dam-${svc} dam-${svc}="${IMAGE}" \
-              -n ${{ env.K8S_NAMESPACE }} || true
+              -n "${NAMESPACE}" || true
           done
 
       - name: Wait for rollouts
         run: |
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
           for svc in api web transform-worker export-worker; do
             kubectl rollout status deployment/dam-${svc} \
-              -n ${{ env.K8S_NAMESPACE }} \
+              -n "${NAMESPACE}" \
               --timeout=300s
           done
 
       - name: Verify health
         run: |
-          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
-          kubectl get ingress -n ${{ env.K8S_NAMESPACE }}
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
+          kubectl get pods -n "${NAMESPACE}"
+          kubectl get ingress -n "${NAMESPACE}"

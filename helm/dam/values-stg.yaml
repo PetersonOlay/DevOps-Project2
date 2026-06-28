@@ -1,5 +1,8 @@
 # Staging environment overrides.
-# Usage: helm upgrade dam ./app/helm/dam -f app/helm/dam/values-stg.yaml --reuse-values
+# Usage: helm upgrade dam ./helm/dam -f app/helm/dam/values-stg.yaml --reuse-values
+
+global:
+  namespace: dam-stg
 
 api:
   replicas: 1
