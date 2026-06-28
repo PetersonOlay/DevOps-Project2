@@ -1,0 +1,24 @@
+# Terraform local state and provider downloads — never commit these
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+crash.log
+crash.*.log
+
+# Local variable files that may contain secrets
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# S3 native lock files written during apply
+*.tflock
+
+# Editor and OS artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

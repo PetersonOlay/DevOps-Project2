@@ -1,0 +1,14 @@
+apiVersion: v2
+name: dam
+description: Digital Asset Management platform — API, web UI, transform worker, export worker
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - dam
+  - digital-asset-management
+  - aws
+  - eks
+maintainers:
+  - name: PetersonOlay
+    url: https://github.com/PetersonOlay

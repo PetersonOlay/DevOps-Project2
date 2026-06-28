@@ -1,0 +1,82 @@
+# Default values for the DAM Helm chart.
+# Override per environment with values-dev.yaml or values-prod.yaml:
+#   helm install dam ./app/helm/dam -f app/helm/dam/values-prod.yaml
+
+global:
+  accountId: "395675597879"
+  region: us-east-1
+  namespace: dam
+
+# Container image settings — all services share the same registry and tag
+image:
+  registry: 395675597879.dkr.ecr.us-east-1.amazonaws.com
+  tag: latest
+  pullPolicy: Always
+
+# ── API service ───────────────────────────────────────────────────────────────
+api:
+  replicas: 2
+  s3Bucket: "dam-assets-395675597879-prod"
+  # Populated from: terraform output dam_api_irsa_role_arn
+  irsaRoleArn: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Web UI (React SPA served by nginx) ───────────────────────────────────────
+web:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Transform worker (thumbnail generation) ───────────────────────────────────
+transformWorker:
+  replicas: 1
+  # Populated from: terraform output dam_worker_irsa_role_arn
+  irsaRoleArn: ""
+  pollIntervalMs: "5000"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ── Export worker (zip collection export) ─────────────────────────────────────
+exportWorker:
+  replicas: 1
+  # Populated from: terraform output dam_worker_irsa_role_arn
+  irsaRoleArn: ""
+  pollIntervalMs: "5000"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── ALB Ingress ───────────────────────────────────────────────────────────────
+ingress:
+  scheme: internet-facing          # internet-facing = public ALB; internal = VPC-only
+  targetType: ip                   # ip mode works with EKS managed node groups
+  # Optional: ACM certificate ARN enables HTTPS. Leave empty for HTTP only.
+  certificateArn: ""
+  sslRedirect: "443"
+
+# ── Secrets — set at deploy time, never commit real values ───────────────────
+# Pass with: --set secrets.databaseUrl="postgresql://..."
+secrets:
+  databaseUrl: ""
+  jwtSecret: ""
+  jwtRefreshSecret: ""

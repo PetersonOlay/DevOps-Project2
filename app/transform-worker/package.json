@@ -1,0 +1,24 @@
+{
+  "name": "dam-transform-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --out-dir dist",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@prisma/client": "^5.16.0",
+    "dotenv": "^16.4.5",
+    "sharp": "^0.33.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "prisma": "^5.16.0",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.1.0",
+    "typescript": "^5.4.5"
+  }
+}

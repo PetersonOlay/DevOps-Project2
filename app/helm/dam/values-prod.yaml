@@ -1,0 +1,27 @@
+# Production environment overrides.
+# Usage: helm upgrade dam ./app/helm/dam -f app/helm/dam/values-prod.yaml --reuse-values
+
+api:
+  replicas: 2
+  s3Bucket: "dam-assets-395675597879-prod"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+web:
+  replicas: 3
+
+transformWorker:
+  replicas: 2
+  pollIntervalMs: "5000"
+
+exportWorker:
+  replicas: 2
+  pollIntervalMs: "5000"
+
+image:
+  pullPolicy: IfNotPresent

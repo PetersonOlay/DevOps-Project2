@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  createdAt   DateTime     @default(now())
+  users       User[]
+  assets      Asset[]
+  collections Collection[]
+  tags        Tag[]
+}
+
+model User {
+  id           String       @id @default(cuid())
+  orgId        String
+  email        String       @unique
+  passwordHash String
+  role         Role         @default(MEMBER)
+  createdAt    DateTime     @default(now())
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assets       Asset[]
+  downloads    Download[]
+}
+
+model Asset {
+  id           String          @id @default(cuid())
+  orgId        String
+  userId       String
+  name         String
+  description  String?
+  fileKey      String          // S3 key: originals/{orgId}/{id}/original.{ext}
+  thumbnailKey String?         // S3 key: thumbnails/{orgId}/{id}/thumb.jpg
+  mimeType     String
+  fileSize     BigInt
+  width        Int?
+  height       Int?
+  status       AssetStatus     @default(PROCESSING)
+  createdAt    DateTime        @default(now())
+  org          Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id])
+  tags         AssetTag[]
+  collections  CollectionAsset[]
+  downloads    Download[]
+}
+
+model Tag {
+  id     String       @id @default(cuid())
+  orgId  String
+  name   String
+  color  String       @default("#6366f1")
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assets AssetTag[]
+
+  @@unique([orgId, name])
+}
+
+model AssetTag {
+  assetId String
+  tagId   String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, tagId])
+}
+
+model Collection {
+  id          String            @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  coverKey    String?           // S3 key for collection cover image
+  createdAt   DateTime          @default(now())
+  org         Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assets      CollectionAsset[]
+  shareLinks  ShareLink[]
+}
+
+model CollectionAsset {
+  collectionId String
+  assetId      String
+  position     Int        @default(0)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  asset        Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, assetId])
+}
+
+model ShareLink {
+  id              String     @id @default(cuid())
+  collectionId    String
+  token           String     @unique @default(cuid())
+  expiresAt       DateTime?
+  downloadAllowed Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  downloads       Download[]
+}
+
+model Download {
+  id           String     @id @default(cuid())
+  assetId      String
+  userId       String?
+  shareToken   String?
+  ipAddress    String?
+  downloadedAt DateTime   @default(now())
+  asset        Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user         User?      @relation(fields: [userId], references: [id])
+}
+
+model Job {
+  id        String    @id @default(cuid())
+  type      JobType
+  payload   Json
+  status    JobStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum Role        { ADMIN MEMBER VIEWER }
+enum AssetStatus { PROCESSING READY FAILED }
+enum JobType     { TRANSFORM EXPORT }
+enum JobStatus   { QUEUED PROCESSING DONE FAILED }

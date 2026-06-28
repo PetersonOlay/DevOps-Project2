@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dam-transform-worker
+  namespace: {{ include "dam.namespace" . }}
+  labels:
+    {{- include "dam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: transform-worker
+spec:
+  replicas: {{ .Values.transformWorker.replicas }}
+  selector:
+    matchLabels:
+      app: dam-transform-worker
+  template:
+    metadata:
+      labels:
+        app: dam-transform-worker
+        {{- include "dam.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: dam-transform-worker
+      containers:
+        - name: dam-transform-worker
+          image: {{ include "dam.image" (dict "root" . "name" "dam/transform-worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: dam-secrets
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: AWS_REGION
+              value: {{ .Values.global.region | quote }}
+            - name: S3_BUCKET
+              value: {{ .Values.api.s3Bucket | quote }}
+            - name: POLL_INTERVAL_MS
+              value: {{ .Values.transformWorker.pollIntervalMs | quote }}
+          resources:
+            {{- toYaml .Values.transformWorker.resources | nindent 12 }}

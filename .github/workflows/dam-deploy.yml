@@ -1,0 +1,111 @@
+name: DAM Platform — Build & Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/dam-deploy.yml"
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "395675597879"
+  ECR_PREFIX: "395675597879.dkr.ecr.us-east-1.amazonaws.com"
+  K8S_NAMESPACE: dam
+
+jobs:
+  build-and-push:
+    name: Build & push images to ECR
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC federation with AWS
+      contents: read
+
+    strategy:
+      matrix:
+        service:
+          - name: api
+            context: app/api
+            image: dam/api
+          - name: web
+            context: app/web
+            image: dam/web
+          - name: transform-worker
+            context: app/transform-worker
+            image: dam/transform-worker
+          - name: export-worker
+            context: app/export-worker
+            image: dam/export-worker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-dam
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ${{ matrix.service.name }}
+        run: |
+          IMAGE="${{ env.ECR_PREFIX }}/${{ matrix.service.image }}"
+          SHA="${{ github.sha }}"
+
+          docker build \
+            --cache-from "$IMAGE:latest" \
+            -t "$IMAGE:sha-$SHA" \
+            -t "$IMAGE:latest" \
+            "${{ matrix.service.context }}"
+
+          docker push "$IMAGE:sha-$SHA"
+          docker push "$IMAGE:latest"
+
+  deploy:
+    name: Deploy to EKS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-dam
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name eks-prod-cluster
+
+      - name: Update image tags in deployments
+        run: |
+          SHA="${{ github.sha }}"
+          for svc in api web transform-worker export-worker; do
+            IMAGE="${{ env.ECR_PREFIX }}/dam/${svc}:sha-${SHA}"
+            kubectl set image deployment/dam-${svc} dam-${svc}="${IMAGE}" \
+              -n ${{ env.K8S_NAMESPACE }} || true
+          done
+
+      - name: Wait for rollouts
+        run: |
+          for svc in api web transform-worker export-worker; do
+            kubectl rollout status deployment/dam-${svc} \
+              -n ${{ env.K8S_NAMESPACE }} \
+              --timeout=300s
+          done
+
+      - name: Verify health
+        run: |
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          kubectl get ingress -n ${{ env.K8S_NAMESPACE }}

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dam-web
+  namespace: {{ include "dam.namespace" . }}
+  labels:
+    {{- include "dam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      app: dam-web
+  template:
+    metadata:
+      labels:
+        app: dam-web
+        {{- include "dam.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: dam-web
+          image: {{ include "dam.image" (dict "root" . "name" "dam/web") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}

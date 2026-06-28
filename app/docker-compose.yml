@@ -1,0 +1,126 @@
+version: "3.9"
+
+# Local development stack — uses MinIO as an S3-compatible backend.
+# Start with: docker compose up -d
+# Then run: cd api && npx prisma migrate dev
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: dam
+      POSTGRES_USER: damadmin
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U damadmin -d dam"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot container to create the bucket in MinIO on first start
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/dam-assets-dev
+      "
+    restart: "no"
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      DATABASE_URL: "postgresql://damadmin:devpassword@postgres:5432/dam"
+      JWT_SECRET: "local-dev-jwt-secret-change-me"
+      JWT_REFRESH_SECRET: "local-dev-refresh-secret-change-me"
+      # MinIO S3-compatible endpoint
+      AWS_ENDPOINT_URL_S3: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      S3_BUCKET: dam-assets-dev
+      WEB_ORIGIN: "http://localhost:5173"
+
+  transform-worker:
+    build:
+      context: ./transform-worker
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://damadmin:devpassword@postgres:5432/dam"
+      AWS_ENDPOINT_URL_S3: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      S3_BUCKET: dam-assets-dev
+      POLL_INTERVAL_MS: "3000"
+
+  export-worker:
+    build:
+      context: ./export-worker
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://damadmin:devpassword@postgres:5432/dam"
+      AWS_ENDPOINT_URL_S3: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      S3_BUCKET: dam-assets-dev
+      POLL_INTERVAL_MS: "3000"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  pg_data:
+  minio_data:

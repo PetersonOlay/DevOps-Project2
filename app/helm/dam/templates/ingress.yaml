@@ -1,0 +1,50 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dam-ingress
+  namespace: {{ include "dam.namespace" . }}
+  labels:
+    {{- include "dam.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: {{ .Values.ingress.scheme }}
+    alb.ingress.kubernetes.io/target-type: {{ .Values.ingress.targetType }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    # Redirect HTTP → HTTPS when a certificate is configured
+    {{- if .Values.ingress.certificateArn }}
+    alb.ingress.kubernetes.io/ssl-redirect: {{ .Values.ingress.sslRedirect | quote }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.ingress.certificateArn | quote }}
+    {{- end }}
+    # Health check targets the API /health endpoint
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-port: "3000"
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+spec:
+  rules:
+    - http:
+        paths:
+          # API routes — proxied to the Express backend
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: dam-api
+                port:
+                  number: 3000
+          # Health check — also goes to the API pod
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: dam-api
+                port:
+                  number: 3000
+          # Everything else — React SPA served by nginx
+          # nginx.conf has try_files so all client-side routes work
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dam-web
+                port:
+                  number: 80

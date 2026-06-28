@@ -1,0 +1,20 @@
+# Dev environment overrides.
+# Usage: helm install dam ./app/helm/dam -f app/helm/dam/values-dev.yaml --set ...
+
+api:
+  replicas: 1
+  s3Bucket: "dam-assets-395675597879-dev"
+
+web:
+  replicas: 1
+
+transformWorker:
+  replicas: 1
+  pollIntervalMs: "3000"
+
+exportWorker:
+  replicas: 1
+  pollIntervalMs: "3000"
+
+image:
+  pullPolicy: Always

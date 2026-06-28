@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Minimal mirror of the API schema — only models this worker needs
+
+model Asset {
+  id      String @id @default(cuid())
+  orgId   String
+  name    String
+  fileKey String
+}
+
+model CollectionAsset {
+  collectionId String
+  assetId      String
+  position     Int    @default(0)
+
+  @@id([collectionId, assetId])
+}
+
+model Job {
+  id        String    @id @default(cuid())
+  type      JobType
+  payload   Json
+  status    JobStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum JobType   { TRANSFORM EXPORT }
+enum JobStatus { QUEUED PROCESSING DONE FAILED }
