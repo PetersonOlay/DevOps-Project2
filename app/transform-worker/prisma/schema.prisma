@@ -34,6 +34,20 @@ model Job {
   updatedAt DateTime  @updatedAt
 }
 
-enum AssetStatus { PROCESSING READY FAILED }
-enum JobType     { TRANSFORM EXPORT }
-enum JobStatus   { QUEUED PROCESSING DONE FAILED }
+enum AssetStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum JobType {
+  TRANSFORM
+  EXPORT
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  DONE
+  FAILED
+}
