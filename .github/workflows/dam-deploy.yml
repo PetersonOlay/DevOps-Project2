@@ -108,6 +108,14 @@ jobs:
             meta.helm.sh/release-name=dam \
             meta.helm.sh/release-namespace="${NAMESPACE}" --overwrite
 
+      - name: Deploy Helm chart
+        run: |
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
+          helm upgrade --install dam ./helm/dam \
+            -f ./helm/dam/values-${{ env.ENVIRONMENT }}.yaml \
+            --namespace "${NAMESPACE}" \
+            --create-namespace
+
       - name: Create application secrets
         run: |
           NAMESPACE="dam-${{ env.ENVIRONMENT }}"
@@ -126,14 +134,6 @@ jobs:
             --from-literal=JWT_SECRET="${JWT_SECRET}" \
             --from-literal=JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}" \
             --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy Helm chart
-        run: |
-          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
-          helm upgrade --install dam ./helm/dam \
-            -f ./helm/dam/values-${{ env.ENVIRONMENT }}.yaml \
-            --namespace "${NAMESPACE}" \
-            --create-namespace
 
       - name: Update image tags in deployments
         run: |
