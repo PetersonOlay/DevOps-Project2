@@ -60,17 +60,23 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2.0.1
 
+      - name: Set image tag with timestamp
+        run: echo "IMAGE_TAG=sha-${{ github.sha }}-$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+
       - name: Build and push ${{ matrix.service.name }}
         run: |
           IMAGE="${{ env.ECR_PREFIX }}/${{ matrix.service.image }}"
           SHA="${{ github.sha }}"
+          TAG="${{ env.IMAGE_TAG }}"
 
           docker build \
             --cache-from "$IMAGE:latest" \
+            -t "$IMAGE:$TAG" \
             -t "$IMAGE:sha-$SHA" \
             -t "$IMAGE:latest" \
             "${{ matrix.service.context }}"
 
+          docker push "$IMAGE:$TAG"
           docker push "$IMAGE:sha-$SHA"
           docker push "$IMAGE:latest"
 
@@ -126,7 +132,8 @@ jobs:
             --create-namespace \
             --set api.irsaRoleArn="${API_ROLE_ARN}" \
             --set transformWorker.irsaRoleArn="${WORKER_ROLE_ARN}" \
-            --set exportWorker.irsaRoleArn="${WORKER_ROLE_ARN}"
+            --set exportWorker.irsaRoleArn="${WORKER_ROLE_ARN}" \
+            --set image.tag="${{ env.IMAGE_TAG }}"
 
       - name: Create application secrets
         run: |
@@ -147,16 +154,6 @@ jobs:
             --from-literal=JWT_SECRET="${JWT_SECRET}" \
             --from-literal=JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}" \
             --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Update image tags in deployments
-        run: |
-          SHA="${{ github.sha }}"
-          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
-          for svc in api web transform-worker export-worker; do
-            IMAGE="${{ env.ECR_PREFIX }}/dam/${svc}:sha-${SHA}"
-            kubectl set image deployment/dam-${svc} dam-${svc}="${IMAGE}" \
-              -n "${NAMESPACE}" || true
-          done
 
       - name: Wait for rollouts
         run: |

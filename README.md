@@ -324,11 +324,25 @@ kubectl get ingress -n dam-dev
 
 ### Step 11 — Tear down
 
+Before destroying, clean up the AWS Load Balancer (created by Kubernetes but not managed by Terraform):
+
 ```bash
+# 1. Delete the Ingress — this removes the ALB
+kubectl delete ingress dam-ingress -n dam-${ENV}
+
+# 2. Wait for ALB to be deprovisioned (30-60 seconds)
+sleep 60
+
+# 3. Now run terraform destroy
+ENV=dev
 terraform destroy -var-file=environments/${ENV}.tfvars
 ```
 
-> The bootstrap S3 bucket has `prevent_destroy = true`. Delete it manually via the AWS Console only when you no longer need the stored state.
+**Notes:**
+- The Kubernetes Ingress controller creates an AWS ALB outside of Terraform's state. Deleting it first prevents VPC/subnet dependency errors during `terraform destroy`.
+- ECR repos and S3 bucket are configured with `force_delete: true` and `force_destroy: true` for dev/stg environments only — this allows them to be deleted even if they contain images or objects.
+- **Production:** ECR repos and S3 bucket in prod have `force_delete: false` and `force_destroy: false` to prevent accidental data loss.
+- The bootstrap S3 bucket has `prevent_destroy = true`. Delete it manually via the AWS Console only when you no longer need the stored state.
 
 ---
 

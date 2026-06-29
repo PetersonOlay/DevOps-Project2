@@ -60,6 +60,7 @@ resource "aws_ecr_repository" "services" {
 
   name                 = each.key
   image_tag_mutability = "MUTABLE"
+  force_delete         = var.environment != "prod"
 
   image_scanning_configuration {
     scan_on_push = true
@@ -82,7 +83,8 @@ resource "aws_ecr_lifecycle_policy" "services" {
 # temp/ objects expire after 24 h. All access is TLS-only.
 
 resource "aws_s3_bucket" "dam_assets" {
-  bucket = "dam-assets-${var.account_id}-${var.environment}"
+  bucket        = "dam-assets-${var.account_id}-${var.environment}"
+  force_destroy = var.environment != "prod"
 }
 
 resource "aws_s3_bucket_versioning" "dam_assets" {
