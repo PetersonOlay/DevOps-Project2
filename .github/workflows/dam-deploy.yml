@@ -108,6 +108,16 @@ jobs:
             meta.helm.sh/release-name=dam \
             meta.helm.sh/release-namespace="${NAMESPACE}" --overwrite
 
+      - name: Create application secrets
+        run: |
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
+          DB_URL="postgresql://postgres:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5432/dam"
+          kubectl create secret generic dam-secrets \
+            --namespace="${NAMESPACE}" \
+            --from-literal=DATABASE_URL="${DB_URL}" \
+            --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy Helm chart
         run: |
           NAMESPACE="dam-${{ env.ENVIRONMENT }}"

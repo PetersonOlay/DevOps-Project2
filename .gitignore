@@ -17,6 +17,10 @@ override.tf.json
 # S3 native lock files written during apply
 *.tflock
 
+# Kubernetes secrets — never commit real credentials
+k8s/dam-secrets.yaml
+k8s/dam-secrets-*.yaml
+
 # Editor and OS artifacts
 .DS_Store
 Thumbs.db
