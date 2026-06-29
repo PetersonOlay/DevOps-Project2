@@ -98,6 +98,16 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --name eks-${{ env.ENVIRONMENT }}-cluster
 
+      - name: Prepare namespace for Helm
+        run: |
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
+          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace "${NAMESPACE}" \
+            app.kubernetes.io/managed-by=Helm --overwrite
+          kubectl annotate namespace "${NAMESPACE}" \
+            meta.helm.sh/release-name=dam \
+            meta.helm.sh/release-namespace="${NAMESPACE}" --overwrite
+
       - name: Deploy Helm chart
         run: |
           NAMESPACE="dam-${{ env.ENVIRONMENT }}"
