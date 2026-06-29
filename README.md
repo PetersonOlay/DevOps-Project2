@@ -1,6 +1,16 @@
 # DAM Platform on AWS EKS
 
-A full-stack Digital Asset Management platform deployed on Amazon EKS, provisioned with Terraform, containerised with Docker, deployed via Helm, and continuously delivered through GitHub Actions.
+A production-ready Digital Asset Management (DAM) platform that enables teams to upload, organize, share, and export digital assets at scale. Built with a modern full-stack architecture:
+
+- **Frontend:** React 18 single-page app with Vite + Tailwind CSS for a responsive, intuitive user interface
+- **Backend:** Node.js Express API with Prisma ORM, providing RESTful endpoints for asset management, authentication, and collaboration
+- **Workers:** Async job processors for thumbnail generation (Sharp) and collection exports (ZIP creation)
+- **Database:** PostgreSQL 15 on AWS RDS with Multi-AZ failover, KMS encryption, and automated backups
+- **Storage:** S3 asset bucket with versioning, intelligent tiering, and pre-signed URLs for direct client uploads
+- **Infrastructure:** Amazon EKS 1.35 Kubernetes cluster across 3 availability zones, with auto-scaling node groups and IRSA for secure AWS service access
+- **CI/CD:** GitHub Actions pipeline that builds 4 containerized services, pushes images to ECR with timestamps, and auto-deploys to EKS via Helm
+- **Infrastructure-as-Code:** Terraform >= 1.10.0 with S3 native state locking, provisioning all AWS resources with safe teardown (force_delete/force_destroy for dev/stg)
+- **Security:** End-to-end encryption (KMS), IAM least-privilege roles, JWT authentication (15-min access + 7-day refresh cookies), CORS-enabled S3 uploads, and pod-level network policies
 
 ---
 
