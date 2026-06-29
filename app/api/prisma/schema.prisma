@@ -125,7 +125,26 @@ model Job {
   updatedAt DateTime  @updatedAt
 }
 
-enum Role        { ADMIN MEMBER VIEWER }
-enum AssetStatus { PROCESSING READY FAILED }
-enum JobType     { TRANSFORM EXPORT }
-enum JobStatus   { QUEUED PROCESSING DONE FAILED }
+enum Role {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum AssetStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum JobType {
+  TRANSFORM
+  EXPORT
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  DONE
+  FAILED
+}
