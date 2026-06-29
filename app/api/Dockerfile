@@ -23,5 +23,5 @@ COPY --from=builder /app/prisma ./prisma
 ENV NODE_ENV=production
 EXPOSE 3000
 
-# Run migrations then start the server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+# Apply schema directly then start the server
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
