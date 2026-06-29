@@ -98,17 +98,13 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --name eks-${{ env.ENVIRONMENT }}-cluster
 
-      - name: Create namespace if not exists
-        run: |
-          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
-          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Deploy Helm chart
         run: |
           NAMESPACE="dam-${{ env.ENVIRONMENT }}"
           helm upgrade --install dam ./helm/dam \
             -f ./helm/dam/values-${{ env.ENVIRONMENT }}.yaml \
             --namespace "${NAMESPACE}" \
+            --create-namespace \
             --wait
 
       - name: Update image tags in deployments
