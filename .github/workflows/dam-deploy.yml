@@ -111,10 +111,22 @@ jobs:
       - name: Deploy Helm chart
         run: |
           NAMESPACE="dam-${{ env.ENVIRONMENT }}"
+          ENV="${{ env.ENVIRONMENT }}"
+
+          API_ROLE_ARN=$(aws iam get-role \
+            --role-name "dam-api-irsa-${ENV}" \
+            --query 'Role.Arn' --output text)
+          WORKER_ROLE_ARN=$(aws iam get-role \
+            --role-name "dam-worker-irsa-${ENV}" \
+            --query 'Role.Arn' --output text)
+
           helm upgrade --install dam ./helm/dam \
-            -f ./helm/dam/values-${{ env.ENVIRONMENT }}.yaml \
+            -f ./helm/dam/values-${ENV}.yaml \
             --namespace "${NAMESPACE}" \
-            --create-namespace
+            --create-namespace \
+            --set api.irsaRoleArn="${API_ROLE_ARN}" \
+            --set transformWorker.irsaRoleArn="${WORKER_ROLE_ARN}" \
+            --set exportWorker.irsaRoleArn="${WORKER_ROLE_ARN}"
 
       - name: Create application secrets
         run: |
