@@ -173,6 +173,12 @@ Never store this in a `.tfvars` file. Use single quotes to avoid bash history-ex
 export TF_VAR_db_password='<your-secure-password>'
 ```
 
+**Password requirements:**
+- Use alphanumeric characters only — avoid `!`, `%`, `@`, `#`, `^`, `&`, `$`
+- These characters cause problems in bash, URLs, and shell scripts
+- Generate a safe password: `openssl rand -base64 24 | tr -d '/+=' | cut -c1-24`
+- Minimum 8 characters, recommended 20+
+
 ### Step 4 — Initialise and deploy
 
 Initialise Terraform with the environment-specific backend configuration:
@@ -202,7 +208,65 @@ terraform apply -var-file=environments/${ENV}.tfvars
 > 
 > If `terraform plan` asks for `db_password`, ensure you've set the environment variable: `export TF_VAR_db_password='your-password'`
 
-### Step 5 — Configure kubectl
+### Step 5 — Validate RDS and store credentials
+
+After `terraform apply`, validate the RDS connection and immediately store credentials in Secrets Manager before deploying anything to Kubernetes.
+
+**5a — Get the RDS endpoint:**
+
+```bash
+ENDPOINT=$(aws rds describe-db-instances \
+  --db-instance-identifier dam-${ENV} \
+  --region us-east-1 \
+  --query 'DBInstances[0].Endpoint.Address' \
+  --output text)
+echo "RDS Endpoint: $ENDPOINT"
+```
+
+**5b — Generate JWT secrets and store everything in Secrets Manager:**
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32)
+JWT_REFRESH_SECRET=$(openssl rand -hex 32)
+
+aws secretsmanager create-secret \
+  --name "dam-${ENV}-app" \
+  --region us-east-1 \
+  --kms-key-id alias/dam-${ENV} \
+  --secret-string "{
+    \"db_host\": \"${ENDPOINT}\",
+    \"db_username\": \"damadmin\",
+    \"db_password\": \"${TF_VAR_db_password}\",
+    \"jwt_secret\": \"${JWT_SECRET}\",
+    \"jwt_refresh_secret\": \"${JWT_REFRESH_SECRET}\"
+  }"
+```
+
+**5c — Test database connectivity from an EKS node:**
+
+The RDS security group only allows inbound from EKS nodes. Test the connection before proceeding:
+
+```bash
+# Find a node to test from
+NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=private-dns-name,Values=${NODE}" \
+  --region us-east-1 \
+  --query 'Reservations[0].Instances[0].InstanceId' \
+  --output text)
+
+# Start an interactive SSM session
+aws ssm start-session --target ${INSTANCE_ID} --region us-east-1
+
+# Inside the session, test the connection (psql should be available on AL2023):
+psql "postgresql://damadmin:${TF_VAR_db_password}@${ENDPOINT}:5432/dam" -c "SELECT version();"
+```
+
+Expected output: `PostgreSQL 15.x...`
+
+If the connection fails, debug and fix it before proceeding to Step 6. Do not deploy to Kubernetes until the `psql` test passes.
+
+### Step 6 — Configure kubectl
 
 ```bash
 aws eks update-kubeconfig --region us-east-1 --name eks-${ENV}-cluster
@@ -210,7 +274,7 @@ aws eks update-kubeconfig --region us-east-1 --name eks-${ENV}-cluster
 $(terraform output -raw configure_kubectl)
 ```
 
-### Step 6 — Verify the cluster
+### Step 7 — Verify the cluster
 
 ```bash
 kubectl get nodes -o wide
@@ -218,7 +282,7 @@ kubectl get pods -n kube-system
 kubectl get deploy -n kube-system aws-load-balancer-controller
 ```
 
-### Step 7 — Set up GitHub Actions
+### Step 8 — Set up GitHub Actions
 
 GitHub Actions needs AWS credentials and the ECR registry URL. Add these secrets and variables:
 
@@ -237,7 +301,7 @@ GitHub Actions needs AWS credentials and the ECR registry URL. Add these secrets
 
 > If you need different registries per environment (e.g. separate AWS accounts), add environment-specific variables under **Settings → Environments** instead.
 
-### Step 8 — Deploy the DAM application
+### Step 9 — Deploy the DAM application
 
 **Via CI/CD (automatic):** Push to `main` — the workflow builds all 4 images, pushes to ECR, and rolls out to `dam-dev`.
 
@@ -251,14 +315,14 @@ helm upgrade --install dam ./helm/dam \
 
 **Promote to staging or production** using `workflow_dispatch` in the GitHub Actions UI, selecting the target environment.
 
-### Step 9 — Verify DAM pods
+### Step 10 — Verify DAM pods
 
 ```bash
 kubectl get pods -n dam-dev
 kubectl get ingress -n dam-dev
 ```
 
-### Step 10 — Tear down
+### Step 11 — Tear down
 
 ```bash
 terraform destroy -var-file=environments/${ENV}.tfvars
@@ -491,6 +555,36 @@ Error from server (NotFound): deployments.apps "dam-api" not found
 **Cause:** The workflow tries to update image tags on deployments that don't exist yet (first deployment).
 
 **Fix:** This is already fixed — the workflow now runs `helm upgrade --install` before updating image tags, ensuring all 4 deployments exist before the workflow tries to update them.
+
+---
+
+### Common RDS mistakes (and how to avoid them)
+
+**Mistake 1 — Wrong username in DATABASE_URL**
+
+```
+P1000: Authentication failed... the provided database credentials for `postgres` are not valid.
+```
+
+The RDS master user is `damadmin` (not `postgres`). Always check `variables.tf:117` for the actual username before writing the connection string. The correct format is:
+```
+postgresql://damadmin:<password>@<endpoint>:5432/dam
+```
+
+**Mistake 2 — Password with shell-hostile characters**
+
+Passwords containing `!`, `%`, `@`, `#`, `^`, `&`, or `$` fail silently in bash, especially if you use `export TF_VAR_db_password=` (without quotes). Always:
+- Use single quotes: `export TF_VAR_db_password='...'`
+- Or generate a safe password: `openssl rand -base64 24 | tr -d '/+=' | cut -c1-24`
+- Only use alphanumeric characters in passwords
+
+**Mistake 3 — Skipping Secrets Manager storage**
+
+If you forget to store credentials in Secrets Manager immediately after `terraform apply`, you'll have no record of the password later (especially if Terraform state is lost). Always run Step 5 before anything else.
+
+**Mistake 4 — No connectivity test before deploying**
+
+Don't skip the `psql` test in Step 5c. Authentication errors will only surface when pods start crashing inside Kubernetes, making debugging harder. Test locally first.
 
 ---
 
