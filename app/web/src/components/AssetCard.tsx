@@ -2,7 +2,8 @@ import { Asset } from "../api/assets";
 
 interface Props {
   asset: Asset;
-  onClick: () => void;
+  onClick?: () => void;
+  onDelete?: (assetId: string) => void;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -19,49 +20,77 @@ function humanSize(bytes: string): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export default function AssetCard({ asset, onClick }: Props) {
+export default function AssetCard({ asset, onClick, onDelete }: Props) {
   return (
-    <div
-      onClick={onClick}
-      className="group bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
-    >
-      {/* Thumbnail */}
-      <div className="bg-gray-100 aspect-square flex items-center justify-center overflow-hidden">
-        {asset.viewUrl ? (
-          <img src={asset.viewUrl} alt={asset.name} className="w-full h-full object-cover" />
-        ) : (
-          <span className="text-3xl text-gray-400">
-            {asset.mimeType.startsWith("video/") ? "🎬" :
-             asset.mimeType === "application/pdf" ? "📄" : "📁"}
-          </span>
-        )}
+    <div className="group relative">
+      <div
+        onClick={onClick}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer hover:shadow-lg transition-all"
+      >
+        {/* Thumbnail */}
+        <div className="bg-gray-100 aspect-square flex items-center justify-center overflow-hidden">
+          {asset.viewUrl ? (
+            <img src={asset.viewUrl} alt={asset.name} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-3xl text-gray-400">
+              {asset.mimeType.startsWith("video/") ? "🎬" :
+               asset.mimeType === "application/pdf" ? "📄" : "📁"}
+            </span>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="p-3">
+          <p className="text-sm font-medium text-gray-900 truncate">{asset.name}</p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-gray-500">{humanSize(asset.fileSize)}</p>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[asset.status]}`}>
+              {asset.status}
+            </span>
+          </div>
+          {/* Tags */}
+          {asset.tags && asset.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {asset.tags.slice(0, 3).map(({ tag }) => (
+                <span
+                  key={tag.id}
+                  style={{ backgroundColor: tag.color + "22", color: tag.color }}
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                >
+                  {tag.name}
+                </span>
+              ))}
+              {asset.tags.length > 3 && (
+                <span className="text-[10px] text-gray-500">+{asset.tags.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Info */}
-      <div className="p-3">
-        <p className="text-sm font-medium text-gray-900 truncate">{asset.name}</p>
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-xs text-gray-400">{humanSize(asset.fileSize)}</p>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[asset.status]}`}>
-            {asset.status}
-          </span>
-        </div>
-        {/* Tags */}
-        {asset.tags && asset.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {asset.tags.slice(0, 3).map(({ tag }) => (
-              <span
-                key={tag.id}
-                style={{ backgroundColor: tag.color + "22", color: tag.color }}
-                className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-              >
-                {tag.name}
-              </span>
-            ))}
-            {asset.tags.length > 3 && (
-              <span className="text-[10px] text-gray-400">+{asset.tags.length - 3}</span>
-            )}
-          </div>
+      {/* Hover overlay with quick actions */}
+      <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick?.();
+          }}
+          className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 shadow-lg"
+          title="View details"
+        >
+          ℹ️
+        </button>
+        {onDelete && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(asset.id);
+            }}
+            className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 shadow-lg"
+            title="Delete asset"
+          >
+            🗑
+          </button>
         )}
       </div>
     </div>
