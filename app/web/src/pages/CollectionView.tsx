@@ -121,15 +121,36 @@ export default function CollectionViewPage() {
         </div>
 
         {shareToken && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-sm flex justify-between items-center">
-            <span>Share URL: <a href={`/share/${shareToken}`} target="_blank" rel="noreferrer" className="text-brand-600 font-medium underline">{window.location.origin}/share/{shareToken}</a></span>
-            <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${shareToken}`)} className="text-xs px-2 py-1 bg-white border border-green-200 rounded hover:bg-green-50">Copy</button>
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-sm">
+            <div className="flex justify-between items-center gap-3">
+              <div>
+                <p className="font-medium text-green-900 mb-2">Share link created!</p>
+                <p className="text-green-800 break-all">{window.location.origin}/share/{shareToken}</p>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/share/${shareToken}`)
+                    .then(() => alert("Link copied to clipboard!"))
+                    .catch(() => alert("Failed to copy. Please copy manually."));
+                }}
+                className="flex-shrink-0 text-xs px-3 py-2 bg-white border border-green-300 rounded hover:bg-green-100 font-medium text-green-700 whitespace-nowrap"
+              >
+                📋 Copy
+              </button>
+            </div>
           </div>
         )}
 
         {exportUrl && (
           <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-            <a href={exportUrl} download className="text-brand-600 font-medium underline">Download zip</a>
+            <p className="font-medium text-blue-900 mb-2">Export ready!</p>
+            <a
+              href={exportUrl}
+              download
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 font-medium"
+            >
+              ⬇️ Download zip
+            </a>
           </div>
         )}
 
