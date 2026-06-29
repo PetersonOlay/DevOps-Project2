@@ -324,25 +324,100 @@ kubectl get ingress -n dam-dev
 
 ### Step 11 — Tear down
 
-Before destroying, clean up the AWS Load Balancer (created by Kubernetes but not managed by Terraform):
+The project has multiple layers of infrastructure. Destroy in this order to avoid dependency errors:
 
+#### Step 1 — Set environment variables
 ```bash
-# 1. Delete the Ingress — this removes the ALB
-kubectl delete ingress dam-ingress -n dam-${ENV}
-
-# 2. Wait for ALB to be deprovisioned (30-60 seconds)
-sleep 60
-
-# 3. Now run terraform destroy
-ENV=dev
-terraform destroy -var-file=environments/${ENV}.tfvars
+ENV=dev   # change to stg or prod as needed
+export TF_VAR_db_password='DAMdev2024!Secure'
 ```
 
+#### Step 2 — Delete the Kubernetes Ingress (removes the ALB)
+```bash
+kubectl delete ingress dam-ingress -n dam-${ENV}
+```
+
+Verify the ALB is gone (wait 60 seconds, then check):
+```bash
+aws elbv2 describe-load-balancers \
+  --query 'LoadBalancers[?contains(LoadBalancerName, `dam`)]' \
+  --output table
+```
+Proceed only when the table is empty.
+
+#### Step 3 — Uninstall the Helm release
+```bash
+helm uninstall dam -n dam-${ENV}
+```
+
+#### Step 4 — Delete the Kubernetes namespace
+```bash
+kubectl delete namespace dam-${ENV}
+```
+
+#### Step 5 — Delete Secrets Manager secret
+```bash
+aws secretsmanager delete-secret \
+  --secret-id "dam-${ENV}-app" \
+  --force-delete-without-recovery \
+  --region us-east-1
+```
+
+#### Step 6 — Run terraform destroy
+```bash
+cd ~/DevOps-Project2
+terraform init -backend-config=environments/${ENV}.backend.hcl
+terraform destroy -var-file=environments/${ENV}.tfvars
+```
+Type `yes` when prompted. Expected duration: 10–15 minutes.
+
+#### Step 7 (Optional) — Delete the bootstrap S3 bucket
+Only if you're permanently shutting down and don't need Terraform state:
+
+```bash
+aws s3api delete-objects \
+  --bucket dam-bootstrap-395675597879 \
+  --delete "$(aws s3api list-object-versions \
+    --bucket dam-bootstrap-395675597879 \
+    --output json \
+    --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')"
+
+aws s3 rb s3://dam-bootstrap-395675597879 --force
+```
+
+#### Verification after destroy
+```bash
+# Verify no EKS clusters remain
+aws eks list-clusters --region us-east-1
+
+# Verify no RDS instances remain
+aws rds describe-db-instances --region us-east-1 \
+  --query 'DBInstances[?contains(DBInstanceIdentifier, `dam`)]'
+
+# Verify no ECR repos remain
+aws ecr describe-repositories \
+  --query 'repositories[?contains(repositoryName, `dam`)]'
+
+# Verify no S3 buckets remain (except bootstrap if keeping state)
+aws s3 ls | grep dam
+```
+
+**What gets destroyed at each step:**
+
+| Step | Resources removed |
+|---|---|
+| 2 | AWS Application Load Balancer (ALB) |
+| 3 | K8s Deployments, Services, ServiceAccounts, ConfigMaps |
+| 4 | K8s namespace |
+| 5 | Secrets Manager secret |
+| 6 | EKS cluster, node groups, RDS, S3 bucket, ECR repos, VPC, subnets, KMS keys, IAM roles, IRSA roles, security groups (106 resources) |
+| 7 | Terraform state bucket (permanent deletion) |
+
 **Notes:**
-- The Kubernetes Ingress controller creates an AWS ALB outside of Terraform's state. Deleting it first prevents VPC/subnet dependency errors during `terraform destroy`.
-- ECR repos and S3 bucket are configured with `force_delete: true` and `force_destroy: true` for dev/stg environments only — this allows them to be deleted even if they contain images or objects.
+- The Kubernetes Ingress controller creates an AWS ALB **outside Terraform's state**. Deleting it first prevents VPC/subnet dependency errors.
+- ECR repos and S3 bucket have `force_delete: true` and `force_destroy: true` for dev/stg only — allows deletion even if they contain images/objects.
 - **Production:** ECR repos and S3 bucket in prod have `force_delete: false` and `force_destroy: false` to prevent accidental data loss.
-- The bootstrap S3 bucket has `prevent_destroy = true`. Delete it manually via the AWS Console only when you no longer need the stored state.
+- The bootstrap S3 bucket has `prevent_destroy = true` — must be deleted manually if permanently shutting down.
 
 ---
 
