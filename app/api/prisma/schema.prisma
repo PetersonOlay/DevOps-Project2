@@ -105,14 +105,15 @@ model ShareLink {
 }
 
 model Download {
-  id           String     @id @default(cuid())
+  id           String      @id @default(cuid())
   assetId      String
   userId       String?
   shareToken   String?
   ipAddress    String?
-  downloadedAt DateTime   @default(now())
-  asset        Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user         User?      @relation(fields: [userId], references: [id])
+  downloadedAt DateTime    @default(now())
+  asset        Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user         User?       @relation(fields: [userId], references: [id])
+  shareLink    ShareLink?  @relation(fields: [shareToken], references: [token], onDelete: Cascade)
 }
 
 model Job {
