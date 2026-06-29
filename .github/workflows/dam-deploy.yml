@@ -111,11 +111,18 @@ jobs:
       - name: Create application secrets
         run: |
           NAMESPACE="dam-${{ env.ENVIRONMENT }}"
-          DB_URL="postgresql://postgres:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5432/dam"
+          SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id "dam-${{ env.ENVIRONMENT }}-app" \
+            --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text)
+          DB_HOST=$(echo "$SECRET" | jq -r '.db_host')
+          DB_PASSWORD=$(echo "$SECRET" | jq -r '.db_password')
+          JWT_SECRET=$(echo "$SECRET" | jq -r '.jwt_secret')
+          DB_URL="postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/dam"
           kubectl create secret generic dam-secrets \
             --namespace="${NAMESPACE}" \
             --from-literal=DATABASE_URL="${DB_URL}" \
-            --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            --from-literal=JWT_SECRET="${JWT_SECRET}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy Helm chart
