@@ -402,6 +402,88 @@ Error: connect ECONNREFUSED <rds-endpoint>:5432
 
 ---
 
+### GitHub Actions deploy job fails: "Input required and not supplied: aws-region"
+
+```
+Error: Input required and not supplied: aws-region
+```
+
+**Cause:** The `AWS_REGION` environment variable is referenced in the workflow but not defined in the `env:` block.
+
+**Fix:** This is already fixed in the current code — `AWS_REGION: us-east-1` is set at the top of the workflow. Ensure you're running the latest version from the repository.
+
+---
+
+### Docker build fails: "npm ci can only install with existing package-lock.json"
+
+```
+npm error The `npm ci` command can only install with an existing package-lock.json
+```
+
+**Cause:** The `npm ci` (clean install) command requires `package-lock.json`, but the service directory doesn't have one.
+
+**Fix:** Generate lock files locally for all services:
+```bash
+cd app/api && npm install && cd ../..
+cd app/web && npm install && cd ../..
+cd app/transform-worker && npm install && cd ../..
+cd app/export-worker && npm install && cd ../..
+git add app/*/package-lock.json && git commit -m "Add package-lock.json files"
+git push origin main
+```
+
+This is already fixed in the current repository with committed lock files.
+
+---
+
+### Docker build fails: "This line is invalid. It does not start with any known Prisma schema keyword"
+
+```
+Error validating: This line is invalid...
+  --> prisma/schema.prisma:128
+    | enum Role { ADMIN MEMBER VIEWER }
+```
+
+**Cause:** Prisma enums require each value on its own line; single-line enum syntax is invalid.
+
+**Fix:** Reformat enums to multi-line:
+```prisma
+enum Role {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+```
+
+This is already fixed in the current code for all services (api, transform-worker, export-worker).
+
+---
+
+### Helm deployment fails: "Namespace exists and cannot be imported into the current release"
+
+```
+Error: Unable to continue with install: Namespace "dam-dev" in namespace "" exists and cannot be imported
+...invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by"
+```
+
+**Cause:** The namespace was created with `kubectl` but lacks Helm ownership metadata labels/annotations.
+
+**Fix:** This is already fixed in the current code — the workflow uses `helm upgrade --install` with `--create-namespace` flag, which creates the namespace with proper Helm metadata on first install.
+
+---
+
+### Kubernetes deployment fails: "deployments 'dam-api' not found"
+
+```
+Error from server (NotFound): deployments.apps "dam-api" not found
+```
+
+**Cause:** The workflow tries to update image tags on deployments that don't exist yet (first deployment).
+
+**Fix:** This is already fixed — the workflow now runs `helm upgrade --install` before updating image tags, ensuring all 4 deployments exist before the workflow tries to update them.
+
+---
+
 ## Project Highlights
 
 **Infrastructure & Security:**
