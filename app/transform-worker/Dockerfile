@@ -1,7 +1,7 @@
 # Stage 1 — build
 FROM node:20-alpine AS builder
 # Sharp requires libvips — install build dependencies
-RUN apk add --no-cache python3 make g++ vips-dev
+RUN apk add --no-cache openssl python3 make g++ vips-dev
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -13,7 +13,7 @@ RUN npm run build
 
 # Stage 2 — production
 FROM node:20-alpine
-RUN apk add --no-cache vips
+RUN apk add --no-cache openssl vips
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules

@@ -1,5 +1,6 @@
 # Stage 1 — install and build
 FROM node:20-alpine AS builder
+RUN apk add --no-cache openssl
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -11,6 +12,7 @@ RUN npm run build
 
 # Stage 2 — production image
 FROM node:20-alpine
+RUN apk add --no-cache openssl
 WORKDIR /app
 
 # Only copy production artifacts
