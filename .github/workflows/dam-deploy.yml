@@ -114,8 +114,7 @@ jobs:
           helm upgrade --install dam ./helm/dam \
             -f ./helm/dam/values-${{ env.ENVIRONMENT }}.yaml \
             --namespace "${NAMESPACE}" \
-            --create-namespace \
-            --wait
+            --create-namespace
 
       - name: Update image tags in deployments
         run: |
