@@ -27,58 +27,109 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-xl shadow-sm w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Create your workspace</h1>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="orgName" className="block text-sm font-medium text-gray-700 mb-1">Organisation name</label>
-            <input
-              id="orgName"
-              type="text"
-              required
-              minLength={2}
-              value={orgName}
-              onChange={(e) => setOrgName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+    <div className="min-h-screen flex">
+      {/* Left panel — brand */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-brand-600 to-brand-700 flex-col justify-center px-12 text-white">
+        <div>
+          <h2 className="text-5xl font-bold mb-6">DAM</h2>
+          <p className="text-xl text-brand-50 mb-12">Join your team's workspace</p>
+          <div className="space-y-6">
+            <div className="flex gap-4">
+              <div className="text-2xl">👥</div>
+              <div>
+                <h3 className="font-semibold mb-1">Collaborate seamlessly</h3>
+                <p className="text-sm text-brand-100">Invite teammates and manage assets together in a shared space</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-2xl">🔒</div>
+              <div>
+                <h3 className="font-semibold mb-1">Secure and private</h3>
+                <p className="text-sm text-brand-100">Your organization's workspace is encrypted and protected</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-2xl">⚡</div>
+              <div>
+                <h3 className="font-semibold mb-1">Get started in minutes</h3>
+                <p className="text-sm text-brand-100">Sign up, invite your team, and start uploading assets immediately</p>
+              </div>
+            </div>
           </div>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-brand-500 hover:bg-brand-600 text-white font-medium py-2 rounded-lg text-sm disabled:opacity-50"
-          >
-            {loading ? "Creating…" : "Create workspace"}
-          </button>
-        </form>
-        <p className="mt-4 text-sm text-center text-gray-500">
-          Have an account?{" "}
-          <Link to="/login" className="text-brand-600 font-medium">Sign in</Link>
-        </p>
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="w-full lg:w-1/2 bg-white flex flex-col justify-center px-8 sm:px-12">
+        <div className="w-full max-w-sm mx-auto">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create your workspace</h1>
+          <p className="text-gray-600 text-sm mb-8">Set up a new organization to manage your assets</p>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="orgName" className="block text-sm font-medium text-gray-700 mb-2">Organization name</label>
+              <input
+                id="orgName"
+                type="text"
+                required
+                minLength={2}
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="My Company"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+              <input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
+              <p className="mt-2 text-xs text-gray-500">Must be at least 8 characters</p>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-brand-500 hover:bg-brand-600 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? "Creating…" : "Create workspace"}
+            </button>
+          </form>
+
+          <p className="mt-6 text-sm text-center text-gray-600">
+            Already have an account?{" "}
+            <Link to="/login" className="text-brand-600 font-semibold hover:text-brand-700">
+              Sign in
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );
