@@ -127,6 +127,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "dam_assets" {
   }
 }
 
+resource "aws_s3_bucket_cors_configuration" "dam_assets" {
+  bucket = aws_s3_bucket.dam_assets.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "HEAD", "DELETE"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket_policy" "dam_assets" {
   bucket = aws_s3_bucket.dam_assets.id
   policy = jsonencode({
