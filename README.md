@@ -464,11 +464,21 @@ This is already fixed in the current code for all services (api, transform-worke
 ```
 Error: Unable to continue with install: Namespace "dam-dev" in namespace "" exists and cannot be imported
 ...invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by"
+annotation validation error: missing key "meta.helm.sh/release-name"
 ```
 
-**Cause:** The namespace was created with `kubectl` but lacks Helm ownership metadata labels/annotations.
+**Cause:** The namespace exists (created in prior run) but lacks Helm ownership metadata. Helm refuses to adopt any namespace it doesn't own, even with `--create-namespace`.
 
-**Fix:** This is already fixed in the current code — the workflow uses `helm upgrade --install` with `--create-namespace` flag, which creates the namespace with proper Helm metadata on first install.
+**Fix:** This is already fixed in the current code. The workflow now includes a "Prepare namespace for Helm" step that patches the namespace with required metadata:
+```bash
+kubectl label namespace "${NAMESPACE}" \
+  app.kubernetes.io/managed-by=Helm --overwrite
+kubectl annotate namespace "${NAMESPACE}" \
+  meta.helm.sh/release-name=dam \
+  meta.helm.sh/release-namespace="${NAMESPACE}" --overwrite
+```
+
+This is idempotent — safe for fresh clusters (no namespace yet) and pre-existing namespaces created without Helm metadata.
 
 ---
 
