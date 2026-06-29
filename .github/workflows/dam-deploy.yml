@@ -98,6 +98,11 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --name eks-${{ env.ENVIRONMENT }}-cluster
 
+      - name: Create namespace if not exists
+        run: |
+          NAMESPACE="dam-${{ env.ENVIRONMENT }}"
+          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Update image tags in deployments
         run: |
           SHA="${{ github.sha }}"
