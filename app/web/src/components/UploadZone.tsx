@@ -48,7 +48,7 @@ export default function UploadZone({ onUploaded }: Props) {
       className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
         ${dragging ? "border-brand-500 bg-brand-50" : "border-gray-300 hover:border-brand-400"}`}
     >
-      <input ref={inputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && handleFiles(e.target.files)} />
+      <input ref={inputRef} type="file" multiple aria-label="Upload files" className="hidden" onChange={(e) => e.target.files && handleFiles(e.target.files)} />
       {uploading ? (
         <p className="text-sm text-gray-600 animate-pulse">{progress}</p>
       ) : (

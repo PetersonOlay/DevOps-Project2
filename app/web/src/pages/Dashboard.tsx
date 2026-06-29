@@ -57,12 +57,13 @@ export default function DashboardPage() {
             <form onSubmit={handleCreateCollection} className="flex gap-1">
               <input
                 autoFocus
+                aria-label="Collection name"
                 value={newColName}
                 onChange={(e) => setNewColName(e.target.value)}
                 placeholder="Collection name"
                 className="text-xs border border-gray-300 rounded px-2 py-1 flex-1 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
-              <button type="submit" className="text-xs bg-brand-500 text-white px-2 rounded">+</button>
+              <button type="submit" aria-label="Create collection" className="text-xs bg-brand-500 text-white px-2 rounded">+</button>
             </form>
           ) : (
             <button

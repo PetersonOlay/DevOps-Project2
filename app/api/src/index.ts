@@ -20,6 +20,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

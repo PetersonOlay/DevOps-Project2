@@ -32,8 +32,9 @@ export default function RegisterPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Create your workspace</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Organisation name</label>
+            <label htmlFor="orgName" className="block text-sm font-medium text-gray-700 mb-1">Organisation name</label>
             <input
+              id="orgName"
               type="text"
               required
               minLength={2}
@@ -43,8 +44,9 @@ export default function RegisterPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
+              id="email"
               type="email"
               required
               value={email}
@@ -53,8 +55,9 @@ export default function RegisterPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
+              id="password"
               type="password"
               required
               minLength={8}
