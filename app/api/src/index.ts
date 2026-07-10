@@ -3,6 +3,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import { errorHandler } from "./middleware/errorHandler";
+import { metricsMiddleware, metricsHandler } from "./metrics";
 import authRoutes from "./routes/auth";
 import assetRoutes from "./routes/assets";
 import tagRoutes from "./routes/tags";
@@ -24,8 +25,10 @@ app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   next();
 });
+app.use(metricsMiddleware);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/metrics", metricsHandler);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/assets", assetRoutes);

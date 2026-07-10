@@ -1,0 +1,135 @@
+{
+  "title": "DAM API",
+  "uid": "dam-api-application",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "utc",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate by Route",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (route, method) (rate(http_requests_total{job=\"dam-api\"}[5m]))",
+          "legendFormat": "{{method}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"dam-api\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"dam-api\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"dam-api\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Error Rate (5xx)",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"dam-api\", status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"dam-api\"}[5m]))",
+          "legendFormat": "error ratio"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Requests by Status Code",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } } },
+      "targets": [
+        {
+          "expr": "sum by (status_code) (rate(http_requests_total{job=\"dam-api\"}[5m]))",
+          "legendFormat": "{{status_code}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Node.js Heap Usage",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "nodejs_heap_size_used_bytes{job=\"dam-api\"}",
+          "legendFormat": "{{pod}} used"
+        },
+        {
+          "expr": "nodejs_heap_size_total_bytes{job=\"dam-api\"}",
+          "legendFormat": "{{pod}} total"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Event Loop Lag",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "nodejs_eventloop_lag_seconds{job=\"dam-api\"}",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "dam-api Pod Availability",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "kube_deployment_status_replicas{deployment=\"dam-api\"}",
+          "legendFormat": "desired"
+        },
+        {
+          "expr": "kube_deployment_status_replicas_available{deployment=\"dam-api\"}",
+          "legendFormat": "available"
+        },
+        {
+          "expr": "sum(rate(kube_pod_container_status_restarts_total{pod=~\"dam-api.*\"}[15m]))",
+          "legendFormat": "restart rate"
+        }
+      ]
+    }
+  ]
+}

@@ -125,9 +125,9 @@ resource "aws_iam_policy" "dam_api_s3" {
         Resource = aws_s3_bucket.dam_assets.arn
       },
       {
-        Sid    = "ObjectReadWriteDelete"
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Sid      = "ObjectReadWriteDelete"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         Resource = "${aws_s3_bucket.dam_assets.arn}/*"
       },
       {
@@ -137,9 +137,9 @@ resource "aws_iam_policy" "dam_api_s3" {
         Resource = aws_kms_key.dam.arn
       },
       {
-        Sid    = "SecretsManager"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Sid      = "SecretsManager"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
         Resource = "arn:aws:secretsmanager:us-east-1:${var.account_id}:secret:dam-${var.environment}-*"
       }
     ]
@@ -211,9 +211,9 @@ resource "aws_iam_policy" "dam_worker_s3" {
         Resource = aws_kms_key.dam.arn
       },
       {
-        Sid    = "SecretsManager"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Sid      = "SecretsManager"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
         Resource = "arn:aws:secretsmanager:us-east-1:${var.account_id}:secret:dam-${var.environment}-*"
       }
     ]

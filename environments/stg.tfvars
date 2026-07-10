@@ -21,3 +21,10 @@ log_retention_days = 30
 # DAM application — production-sized instance, no Multi-AZ for stg cost savings
 db_instance_class = "db.t3.medium"
 db_multi_az       = false
+
+# Monitoring stack
+prometheus_retention_days = 7
+prometheus_storage_size   = "10Gi"
+grafana_storage_size      = "2Gi"
+grafana_replicas          = 1
+alertmanager_enabled      = true

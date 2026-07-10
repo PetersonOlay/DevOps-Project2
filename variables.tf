@@ -129,6 +129,38 @@ variable "db_multi_az" {
   default     = false
 }
 
+# ── Monitoring variables (kube-prometheus-stack) ───────────────────────────────
+
+variable "prometheus_retention_days" {
+  description = "Prometheus metrics retention in days"
+  type        = number
+  default     = 7
+}
+
+variable "prometheus_storage_size" {
+  description = "PVC size for Prometheus TSDB storage"
+  type        = string
+  default     = "10Gi"
+}
+
+variable "grafana_storage_size" {
+  description = "PVC size for Grafana persistent storage (dashboards/db)"
+  type        = string
+  default     = "2Gi"
+}
+
+variable "grafana_replicas" {
+  description = "Grafana deployment replica count"
+  type        = number
+  default     = 1
+}
+
+variable "alertmanager_enabled" {
+  description = "Enable the bundled Alertmanager"
+  type        = bool
+  default     = true
+}
+
 # ── Locals ────────────────────────────────────────────────────────────────────
 
 locals {

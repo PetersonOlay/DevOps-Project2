@@ -80,3 +80,24 @@ output "dam_worker_irsa_role_arn" {
   description = "IRSA role ARN — annotate the dam-transform-worker and dam-export-worker service accounts"
   value       = aws_iam_role.dam_worker.arn
 }
+
+# ── Monitoring outputs ──────────────────────────────────────────────────────
+
+data "kubernetes_service" "grafana" {
+  metadata {
+    name      = "kube-prometheus-stack-grafana"
+    namespace = kubernetes_namespace.monitoring.metadata[0].name
+  }
+
+  depends_on = [helm_release.kube_prometheus_stack]
+}
+
+output "grafana_url" {
+  description = "Grafana LoadBalancer endpoint. The NLB hostname can take a few minutes to propagate after apply — if empty/pending, run `kubectl get svc -n monitoring kube-prometheus-stack-grafana`."
+  value       = "http://${try(data.kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].hostname, "pending — see kubectl get svc -n monitoring kube-prometheus-stack-grafana")}"
+}
+
+output "grafana_admin_secret_name" {
+  description = "AWS Secrets Manager secret containing Grafana admin credentials (admin_user, admin_password)"
+  value       = aws_secretsmanager_secret.grafana.name
+}

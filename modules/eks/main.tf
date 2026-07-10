@@ -17,7 +17,7 @@ module "eks" {
 
   # API_AND_CONFIG_MAP is backward-compatible: existing aws-auth ConfigMap entries
   # still work, and new access entries can be managed via the EKS API.
-  authentication_mode                      = "API_AND_CONFIG_MAP"
+  authentication_mode = "API_AND_CONFIG_MAP"
   # Grants cluster-admin to the IAM principal running terraform apply.
   enable_cluster_creator_admin_permissions = true
 

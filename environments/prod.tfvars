@@ -24,3 +24,10 @@ log_retention_days = 90
 # DAM application — production RDS with Multi-AZ standby for HA
 db_instance_class = "db.t3.medium"
 db_multi_az       = true
+
+# Monitoring stack — longer retention for compliance, HA Grafana
+prometheus_retention_days = 30
+prometheus_storage_size   = "50Gi"
+grafana_storage_size      = "5Gi"
+grafana_replicas          = 2
+alertmanager_enabled      = true
