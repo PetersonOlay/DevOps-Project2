@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Set image tag with timestamp
         id: tag
-        run: echo "image_tag=sha-${{ github.sha }}-$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+        run: echo "image_tag=sha-${{ github.sha }}-${{ env.ENVIRONMENT }}-$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
   build-and-push:
     name: Build & push images to ECR
