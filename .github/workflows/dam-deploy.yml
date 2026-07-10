@@ -24,8 +24,19 @@ env:
   ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
 
 jobs:
+  prepare:
+    name: Compute image tag
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - name: Set image tag with timestamp
+        id: tag
+        run: echo "image_tag=sha-${{ github.sha }}-$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+
   build-and-push:
     name: Build & push images to ECR
+    needs: prepare
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -60,14 +71,11 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2.0.1
 
-      - name: Set image tag with timestamp
-        run: echo "IMAGE_TAG=sha-${{ github.sha }}-$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_ENV
-
       - name: Build and push ${{ matrix.service.name }}
         run: |
           IMAGE="${{ env.ECR_PREFIX }}/${{ matrix.service.image }}"
           SHA="${{ github.sha }}"
-          TAG="${{ env.IMAGE_TAG }}"
+          TAG="${{ needs.prepare.outputs.image_tag }}"
 
           docker build \
             --cache-from "$IMAGE:latest" \
@@ -82,7 +90,7 @@ jobs:
 
   deploy:
     name: Deploy to EKS (${{ github.event.inputs.environment || 'dev' }})
-    needs: build-and-push
+    needs: [prepare, build-and-push]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -133,7 +141,7 @@ jobs:
             --set api.irsaRoleArn="${API_ROLE_ARN}" \
             --set transformWorker.irsaRoleArn="${WORKER_ROLE_ARN}" \
             --set exportWorker.irsaRoleArn="${WORKER_ROLE_ARN}" \
-            --set image.tag="${{ env.IMAGE_TAG }}"
+            --set image.tag="${{ needs.prepare.outputs.image_tag }}"
 
       - name: Create application secrets
         run: |
