@@ -74,18 +74,15 @@ jobs:
       - name: Build and push ${{ matrix.service.name }}
         run: |
           IMAGE="${{ env.ECR_PREFIX }}/${{ matrix.service.image }}"
-          SHA="${{ github.sha }}"
           TAG="${{ needs.prepare.outputs.image_tag }}"
 
           docker build \
             --cache-from "$IMAGE:latest" \
             -t "$IMAGE:$TAG" \
-            -t "$IMAGE:sha-$SHA" \
             -t "$IMAGE:latest" \
             "${{ matrix.service.context }}"
 
           docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:sha-$SHA"
           docker push "$IMAGE:latest"
 
   deploy:
