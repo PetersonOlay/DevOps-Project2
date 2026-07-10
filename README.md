@@ -1,5 +1,7 @@
 # DAM Platform on AWS EKS
 
+![DAM banner](images/banner.png)
+
 A production-ready Digital Asset Management (DAM) platform that enables teams to upload, organize, share, and export digital assets at scale. Built with a modern full-stack architecture:
 
 - **Frontend:** React 18 single-page app with Vite + Tailwind CSS for a responsive, intuitive user interface
