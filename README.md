@@ -48,6 +48,31 @@ A production-ready Digital Asset Management (DAM) platform that enables teams to
 
 ---
 
+## Architecture
+
+### Network
+
+- **VPC** — `10.0.0.0/16` across 3 AZs (`us-east-1a/b/c`), 3 private `/19` subnets (nodes, RDS) and 3 public `/24` subnets (NAT gateways, load balancers) (`modules/vpc/main.tf`, `variables.tf`).
+- **NAT strategy** — dev/stg share a single NAT gateway (`single_nat_gateway = true`) to save ~$100/month; prod runs one NAT gateway per AZ so an AZ outage doesn't cut off outbound traffic cluster-wide.
+- **Ingress** — the DAM app is reachable through an ALB provisioned by the AWS Load Balancer Controller from `helm/dam/templates/ingress.yaml` (paths `/api`, `/health`, `/` routed to `dam-api`/`dam-web`). Grafana is reachable through a separate internet-facing NLB (a plain `LoadBalancer` Service, `monitoring/values.yaml.tpl`).
+
+### Compute
+
+- **EKS 1.35** — one managed node group (AL2023, IRSA enabled, `API_AND_CONFIG_MAP` auth mode), spanning all 3 private subnets (`modules/eks/main.tf`).
+- **Namespaces** — `dam-<env>` runs the application (api/web/transform-worker/export-worker); `kube-system` runs cluster add-ons (CoreDNS, kube-proxy, VPC CNI, EBS CSI driver, AWS Load Balancer Controller); `monitoring` runs the observability stack (Prometheus, Grafana, Alertmanager, node-exporter, kube-state-metrics).
+
+### Data layer
+
+- **RDS PostgreSQL 15.18** — `gp3` storage, autoscaling 20Gi→100Gi, KMS-encrypted, private (`dam.tf`).
+- **S3 (`dam_assets`)** — versioned, KMS-encrypted, TLS-only bucket policy; `originals/`, `thumbnails/`, `exports/`, `temp/` layout.
+- **ECR** — 4 private repositories (one per service), scan-on-push, lifecycle-managed.
+
+### Terraform layout
+
+The root module is split by concern rather than by resource type: `main.tf` (providers, `module.vpc`/`module.eks`), `dam.tf` (KMS/S3/ECR/RDS), `iam.tf` (all IRSA roles), `eks-config.tf` (managed add-ons + Load Balancer Controller), `monitoring.tf` (kube-prometheus-stack + Grafana secret chain), `variables.tf`/`outputs.tf` at the root, and `environments/*.tfvars` + matching `*.backend.hcl` for per-environment overrides and remote state. `bootstrap/` is a separate, one-time-run mini-config that creates the S3 state bucket before the main configuration can use it.
+
+---
+
 ## Web Application
 
 The DAM frontend is a single-page application in `app/web/` built with:
@@ -458,13 +483,78 @@ The workflow at `.github/workflows/dam-deploy.yml` runs in two jobs:
 
 | | dev | stg | prod |
 |---|---|---|---|
-| EKS nodes | t3.medium × 1–3 | m5.large × 2–4 | m5.large × 2–5 |
+| EKS nodes | t3.medium × 1–4 | m5.large × 2–4 | m5.large × 2–5 |
 | NAT Gateways | 1 shared | 1 shared | 3 (one per AZ) |
 | RDS instance | db.t3.micro | db.t3.medium | db.t3.medium |
 | RDS Multi-AZ | No | No | Yes |
 | RDS backup retention | 1 day | 1 day | 7 days |
 | Log retention | 7 days | 30 days | 90 days |
 | K8s namespace | `dam-dev` | `dam-stg` | `dam-prod` |
+
+---
+
+## Security
+
+**Encryption at rest** — a single KMS key (`aws_kms_key.dam`) encrypts RDS, S3, and ECR, with annual rotation.
+
+**IRSA roles** (`iam.tf`) — each pod-facing AWS permission is scoped to a specific namespace:service-account pair, not the node's instance role:
+
+| Role | Service account | Grants |
+|---|---|---|
+| `ebs_csi_irsa` | `kube-system:ebs-csi-controller-sa` | `AmazonEBSCSIDriverPolicy` |
+| `lbc_irsa` | `kube-system:aws-load-balancer-controller` | `AWSLoadBalancerControllerIAMPolicy` |
+| `cloudwatch_irsa` | `amazon-cloudwatch:cloudwatch-agent` | `CloudWatchAgentServerPolicy` |
+| `dam_api` | `dam:dam-api` | S3 read/write/delete on `dam_assets`, KMS, Secrets Manager (`dam-<env>-*`) |
+| `dam_worker` | `dam:dam-transform-worker`, `dam:dam-export-worker` | S3 read/write (no delete), KMS, Secrets Manager |
+
+`dam_api`/`dam_worker`'s S3 policies are least-privilege — scoped to the exact bucket ARN and a narrow action list, not `s3:*`.
+
+> **Known issue:** `iam.tf`'s `dam_api`/`dam_worker` trust policies hardcode the service-account namespace as `dam` (`system:serviceaccount:dam:dam-api`), but the application actually deploys to `dam-<env>` (e.g. `dam-dev`, per `helm/dam/values-dev.yaml`). This mismatch means the IRSA trust condition doesn't match the real service account, so token exchange for these two roles likely fails as currently written. Not fixed here — flagging for a follow-up.
+
+**Network isolation** — the RDS security group only allows inbound `5432` from the EKS node security group; there is no `0.0.0.0/0` ingress rule anywhere near the database.
+
+**Node access** — nodes are reachable only via SSM Session Manager (`AmazonSSMManagedInstanceCore`); there is no SSH key pair or bastion host in this repo.
+
+**Secrets handling** — three independent chains, none of which put a plaintext secret in git or tfvars:
+- `db_password` — supplied only via `TF_VAR_db_password`, `sensitive = true`, no default.
+- `dam-<env>-app` — created out-of-band in Secrets Manager (db + JWT credentials), read by the deploy workflow and materialized into the `dam-secrets` Kubernetes Secret at deploy time.
+- `dam-<env>-grafana` — fully Terraform-owned: `random_password.grafana_admin` → `aws_secretsmanager_secret` → mirrored into a Kubernetes Secret, consumed by the Helm chart via `grafana.admin.existingSecret`.
+
+> **Tradeoff, by design:** Grafana is exposed on an internet-facing NLB, protected only by that admin password — no IP allowlist, SSO, or WAF. This mirrors the DAM app's own ALB, which also has no WAF association and an optional (default-empty) ACM certificate. Both public entry points currently rely on application-level auth rather than network-level restriction. Worth revisiting if either service holds more sensitive data over time.
+
+---
+
+## Availability & Resilience
+
+**Multi-AZ by default** — all three environments span 3 AZs for subnets and the EKS node group. RDS Multi-AZ is prod-only (`db_multi_az`); dev/stg accept single-AZ RDS to save cost. NAT gateways follow the same pattern: one shared gateway for dev/stg, one per AZ in prod.
+
+**Node group scaling** — sizing is set per environment in `environments/*.tfvars` (dev 1–4, stg 2–4, prod 2–5 nodes). One important caveat discovered operating this cluster: the `terraform-aws-modules/eks` module ignores changes to `desired_size` after the node group's initial creation (by design, so Terraform doesn't fight the Cluster Autoscaler) — only `min_size`/`max_size` changes actually apply on a later `terraform apply`. To rescale the *desired* count on an existing node group, use the AWS CLI directly:
+```bash
+aws eks update-nodegroup-config --cluster-name <cluster> --nodegroup-name <ng> \
+  --region us-east-1 --scaling-config minSize=<min>,maxSize=<max>,desiredSize=<desired>
+```
+
+**Pod-level resilience** — replica counts scale per environment (api/web 1–3 replicas, workers 1–2). `dam-api` and `dam-web` both have readiness and liveness probes against `/health`; `transform-worker` and `export-worker` currently have **no probes at all** — a real gap worth closing, since Kubernetes has no way to detect a wedged worker pod today.
+
+**RDS resilience** — 7-day backup retention in prod (1 day in dev/stg), storage autoscaling up to 100Gi so growth doesn't hit a hard ceiling unexpectedly.
+
+**Monitoring stack resilience** — intentionally asymmetric by environment: dev runs a single Grafana replica with Alertmanager disabled (cost-optimized, no on-call in dev); prod runs 2 Grafana replicas with Alertmanager enabled.
+
+**Capacity gotcha** — on a `t3.medium` node, the hard pod-count ceiling (~17 pods, ENI-limited) is reached well before CPU or memory pressure shows up. This bit us directly when adding the monitoring stack to the dev node group — `kubectl describe node` showed only ~70% CPU / ~46% memory requested, but new pods still failed to schedule with "Too many pods." Worth remembering when sizing dev nodes for anything beyond the current workload.
+
+---
+
+## Deployment Strategy
+
+**Promotion model** — a push to `main` always deploys to `dev` only (`ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}` in `dam-deploy.yml`). Promoting to `stg` or `prod` requires manually running the workflow via `workflow_dispatch` with an explicit environment selection — there is no automatic promotion path.
+
+**Image tagging** — every build gets a shared `sha-<full-sha>-<env>-<timestamp>` tag (computed once in a `prepare` job and passed to both the build matrix and the deploy job via job outputs) plus a rolling `latest` tag. This was a real bug fixed this session: the tag used to be computed independently inside each matrix job via `$GITHUB_ENV`, which doesn't propagate across jobs — the deploy step was silently getting an empty tag.
+
+**Helm strategy** — deploys use idempotent `helm upgrade --install`. The target namespace is labeled/annotated with Helm ownership metadata *before* the install step, avoiding the "namespace exists and cannot be imported" error on redeploys. IRSA role ARNs are fetched live via `aws iam get-role` and injected with `--set` at deploy time rather than being baked into the values files (which ship with empty `irsaRoleArn: ""` defaults).
+
+**Rollout verification** — the workflow waits on `kubectl rollout status --timeout=300s` for each of the 4 deployments before declaring success, then runs a final `kubectl get pods` / `get ingress` health check.
+
+**Terraform apply ordering** — a brand-new environment needs a staged apply: `-target=module.vpc`, then `-target=module.eks`, then a full apply — because the `kubernetes`/`helm` providers can't authenticate until the cluster exists (documented in `main.tf`). The monitoring stack added a second staging requirement: `kubernetes_manifest` resources (like the DAM API `ServiceMonitor`) validate their CRD's schema live against the API server *at plan time*, so they can't be planned in the same run that installs the CRD providing that type. In practice: apply the Helm release that installs the CRDs first, then apply again for anything that depends on them.
 
 ---
 
@@ -684,6 +774,114 @@ If you forget to store credentials in Secrets Manager immediately after `terrafo
 **Mistake 4 — No connectivity test before deploying**
 
 Don't skip the `psql` test in Step 5c. Authentication errors will only surface when pods start crashing inside Kubernetes, making debugging harder. Test locally first.
+
+---
+
+### Grafana/Prometheus PVCs stuck Pending: "no persistent volumes available"
+
+```
+Warning  FailedBinding  persistentvolumeclaim/kube-prometheus-stack-grafana
+no persistent volumes available for this claim and no storage class is set
+```
+
+**Cause:** the EKS `aws-ebs-csi-driver` managed add-on creates a `gp2` StorageClass but does not mark it as the cluster default, so PVCs with no `storageClassName` never bind.
+
+**Fix:** set `storageClassName: gp2` explicitly wherever kube-prometheus-stack creates a PVC — `grafana.persistence.storageClassName` and `prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName` in `monitoring/values.yaml.tpl`. This is already fixed in the current code.
+
+---
+
+### Prometheus PVC still Pending after fixing the StorageClass
+
+**Cause:** a PVC created during a *failed* first Helm install isn't recreated when the underlying `volumeClaimTemplate` changes — StatefulSets only create a PVC if one matching the name doesn't already exist, so the stale, storage-class-less PVC just sits there forever.
+
+**Fix:** delete the stuck PVC (safe if it was never `Bound` — no data to lose) and its pod, so the StatefulSet recreates both from the corrected template:
+```bash
+kubectl delete pvc -n monitoring prometheus-kube-prometheus-stack-prometheus-db-prometheus-kube-prometheus-stack-prometheus-0
+kubectl delete pod -n monitoring prometheus-kube-prometheus-stack-prometheus-0
+```
+
+---
+
+### `terraform apply` doesn't add nodes even though `node_group_desired_size` was raised
+
+**Cause:** the `terraform-aws-modules/eks` module ignores changes to `desired_size` after the node group's initial creation — this is intentional, so Terraform doesn't repeatedly fight the Cluster Autoscaler over the current node count. Only `min_size`/`max_size` changes take effect on subsequent applies.
+
+**Fix:** rescale the running node group directly:
+```bash
+aws eks update-nodegroup-config --cluster-name <cluster> --nodegroup-name <ng> \
+  --region us-east-1 --scaling-config minSize=<min>,maxSize=<max>,desiredSize=<desired>
+```
+
+---
+
+### `kubernetes_manifest` ServiceMonitor fails: "API did not recognize GroupVersionKind"
+
+```
+Error: API did not recognize GroupVersionKind from manifest (CRD may not be installed)
+no matches for kind "ServiceMonitor" in group "monitoring.coreos.com"
+```
+
+**Cause:** `kubernetes_manifest` validates a resource's schema live against the API server at *plan* time, before anything is applied — so it can't be planned in the same run that installs the CRD providing that type (here, the Prometheus Operator's `ServiceMonitor` CRD, installed by the `kube_prometheus_stack` Helm release).
+
+**Fix:** apply in two passes — everything except the ServiceMonitor first (e.g. via `-target`), then a second `terraform apply` once the CRD exists.
+
+---
+
+### ServiceMonitor exists but Prometheus never scrapes the target
+
+**Cause:** a ServiceMonitor's `spec.selector.matchLabels` matches against the **Service's own metadata labels**, not its pod `selector`. A Service can have `spec.selector: {app: dam-api}` (for routing traffic to pods) while having no `app: dam-api` label on itself — in which case the ServiceMonitor matches nothing, and the target silently never appears in Prometheus.
+
+**Fix:** add `metadata.labels` to the Service, not just `spec.selector`:
+```yaml
+metadata:
+  name: dam-api
+  labels:
+    app: dam-api   # <- required for ServiceMonitor selection
+spec:
+  selector:
+    app: dam-api    # <- required for pod routing (separate concern)
+```
+This is already fixed in `helm/dam/templates/service-api.yaml`.
+
+---
+
+### Target found but scraped as 404, or dropped for a port mismatch
+
+**Cause:** the ServiceMonitor references its scrape port by name (`port: http`), but the Service's port had no `name:` field, so nothing matched.
+
+**Fix:** name the port consistently on both sides:
+```yaml
+ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+```
+Separately: if the target becomes `UP` but scrapes return `404`, the running pod predates the `/metrics` endpoint being added to the app code — this isn't a config bug, just wait for the next deploy to roll out the instrumented image.
+
+---
+
+### Grafana LoadBalancer URL unreachable right after `terraform apply`
+
+**Cause:** AWS NLB DNS and target-group registration take a few minutes to propagate after the load balancer is first created — this is normal, async AWS provisioning, not a misconfiguration.
+
+**Fix:** retry after 2–5 minutes. `curl -I http://<grafana-lb-hostname>/login` should return `200` once it's ready; `kubectl get svc -n monitoring kube-prometheus-stack-grafana` shows the hostname in the meantime.
+
+---
+
+### CI Docker build fails `npm ci` lockfile-sync error after adding a new dependency
+
+```
+npm error `npm ci` can only install packages when your package.json and
+package-lock.json or npm-shrinkwrap.json are in sync
+```
+
+**Cause:** this is a variant of the "npm ci can only install with existing package-lock.json" issue above — but triggered by *editing* `package.json` (e.g. adding `prom-client`) without regenerating the lockfile, rather than a missing lockfile entirely. `npm ci` fails on any drift between the two files, not just a missing one.
+
+**Fix:** always run `npm install` locally immediately after any `package.json` edit, and commit the regenerated `package-lock.json` before pushing:
+```bash
+cd app/api && npm install && cd ../..
+git add app/api/package-lock.json && git commit -m "Update lockfile" && git push
+```
 
 ---
 
